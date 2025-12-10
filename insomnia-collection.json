@@ -1,0 +1,461 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2024-12-10T00:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2023.5.8",
+  "resources": [
+    {
+      "_id": "req_auth_register",
+      "parentId": "fld_auth",
+      "_type": "request",
+      "name": "Register User",
+      "description": "สมัครสมาชิกใหม่",
+      "url": "{{ _.base_url }}/auth/register",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"username\": \"john_doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"securePassword123\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"roleIds\": [\"1\"]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_auth_login",
+      "parentId": "fld_auth",
+      "_type": "request",
+      "name": "Login",
+      "description": "เข้าสู่ระบบด้วย username + password",
+      "url": "{{ _.base_url }}/auth/login",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"username\": \"john_doe\",\n  \"password\": \"securePassword123\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_users_list",
+      "parentId": "fld_users",
+      "_type": "request",
+      "name": "Get All Users",
+      "description": "ดูรายการผู้ใช้ทั้งหมด",
+      "url": "{{ _.base_url }}/auth/users",
+      "method": "GET"
+    },
+    {
+      "_id": "req_users_get",
+      "parentId": "fld_users",
+      "_type": "request",
+      "name": "Get User by ID",
+      "description": "ดูข้อมูลผู้ใช้เฉพาะ",
+      "url": "{{ _.base_url }}/auth/users/1",
+      "method": "GET"
+    },
+    {
+      "_id": "req_users_update",
+      "parentId": "fld_users",
+      "_type": "request",
+      "name": "Update User",
+      "description": "แก้ไขข้อมูลผู้ใช้",
+      "url": "{{ _.base_url }}/auth/users/1",
+      "method": "PUT",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"username\": \"john_updated\",\n  \"email\": \"john.updated@example.com\",\n  \"firstName\": \"John Updated\",\n  \"lastName\": \"Doe Updated\",\n  \"isActive\": true,\n  \"roleIds\": [\"1\", \"2\"]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_users_delete",
+      "parentId": "fld_users",
+      "_type": "request",
+      "name": "Delete User",
+      "description": "ลบผู้ใช้",
+      "url": "{{ _.base_url }}/auth/users/1",
+      "method": "DELETE"
+    },
+    {
+      "_id": "req_users_toggle",
+      "parentId": "fld_users",
+      "_type": "request",
+      "name": "Toggle User Status",
+      "description": "เปิด/ปิดสถานะผู้ใช้",
+      "url": "{{ _.base_url }}/auth/users/1/toggle-status",
+      "method": "PATCH"
+    },
+    {
+      "_id": "req_users_permissions",
+      "parentId": "fld_users",
+      "_type": "request",
+      "name": "Get User Permissions",
+      "description": "ดูสิทธิ์ของผู้ใช้",
+      "url": "{{ _.base_url }}/auth/users/1/permissions",
+      "method": "GET"
+    },
+    {
+      "_id": "req_profile",
+      "parentId": "fld_users",
+      "_type": "request",
+      "name": "Get User Profile",
+      "description": "ดูโปรไฟล์ผู้ใช้ (สำหรับควบคุมเมนู)",
+      "url": "{{ _.base_url }}/auth/profile/1",
+      "method": "GET"
+    },
+    {
+      "_id": "req_roles_list",
+      "parentId": "fld_roles",
+      "_type": "request",
+      "name": "Get All Roles",
+      "description": "ดูรายการบทบาททั้งหมด",
+      "url": "{{ _.base_url }}/auth/roles",
+      "method": "GET"
+    },
+    {
+      "_id": "req_roles_create",
+      "parentId": "fld_roles",
+      "_type": "request",
+      "name": "Create Role",
+      "description": "สร้างบทบาทใหม่",
+      "url": "{{ _.base_url }}/auth/roles",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"code\": \"MANAGER\",\n  \"name\": \"Manager\",\n  \"description\": \"Department manager role\",\n  \"isSystem\": false,\n  \"permissionIds\": [\"1\", \"2\", \"3\"]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_roles_get",
+      "parentId": "fld_roles",
+      "_type": "request",
+      "name": "Get Role by ID",
+      "description": "ดูข้อมูลบทบาทเฉพาะ",
+      "url": "{{ _.base_url }}/auth/roles/1",
+      "method": "GET"
+    },
+    {
+      "_id": "req_roles_update",
+      "parentId": "fld_roles",
+      "_type": "request",
+      "name": "Update Role",
+      "description": "แก้ไขข้อมูลบทบาท",
+      "url": "{{ _.base_url }}/auth/roles/1",
+      "method": "PUT",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"code\": \"MANAGER_UPDATED\",\n  \"name\": \"Manager Updated\",\n  \"description\": \"Updated manager role\",\n  \"isSystem\": false,\n  \"permissionIds\": [\"1\", \"2\", \"3\", \"4\"]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_roles_delete",
+      "parentId": "fld_roles",
+      "_type": "request",
+      "name": "Delete Role",
+      "description": "ลบบทบาท",
+      "url": "{{ _.base_url }}/auth/roles/1",
+      "method": "DELETE"
+    },
+    {
+      "_id": "req_roles_toggle",
+      "parentId": "fld_roles",
+      "_type": "request",
+      "name": "Toggle Role Status",
+      "description": "เปิด/ปิดสถานะบทบาท",
+      "url": "{{ _.base_url }}/auth/roles/1/toggle-status",
+      "method": "PATCH"
+    },
+    {
+      "_id": "req_roles_users",
+      "parentId": "fld_roles",
+      "_type": "request",
+      "name": "Get Role Users",
+      "description": "ดูผู้ใช้ในบทบาท",
+      "url": "{{ _.base_url }}/auth/roles/1/users",
+      "method": "GET"
+    },
+    {
+      "_id": "req_permissions_list",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Get All Permissions",
+      "description": "ดูรายการสิทธิ์ทั้งหมด",
+      "url": "{{ _.base_url }}/auth/permissions",
+      "method": "GET"
+    },
+    {
+      "_id": "req_permissions_create",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Create Permission",
+      "description": "สร้างสิทธิ์ใหม่",
+      "url": "{{ _.base_url }}/auth/permissions",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"code\": \"USER_DELETE\",\n  \"name\": \"Delete User\",\n  \"description\": \"Can delete users from system\",\n  \"module\": \"user-management\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_permissions_get",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Get Permission by ID",
+      "description": "ดูข้อมูลสิทธิ์เฉพาะ",
+      "url": "{{ _.base_url }}/auth/permissions/1",
+      "method": "GET"
+    },
+    {
+      "_id": "req_permissions_update",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Update Permission",
+      "description": "แก้ไขข้อมูลสิทธิ์",
+      "url": "{{ _.base_url }}/auth/permissions/1",
+      "method": "PUT",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"code\": \"USER_MANAGE_UPDATED\",\n  \"name\": \"User Management Updated\",\n  \"description\": \"Updated user management permission\",\n  \"module\": \"user-management\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_permissions_delete",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Delete Permission",
+      "description": "ลบสิทธิ์",
+      "url": "{{ _.base_url }}/auth/permissions/1",
+      "method": "DELETE"
+    },
+    {
+      "_id": "req_permissions_roles",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Get Permission Roles",
+      "description": "ดูบทบาทที่มีสิทธิ์นี้",
+      "url": "{{ _.base_url }}/auth/permissions/1/roles",
+      "method": "GET"
+    },
+    {
+      "_id": "req_permissions_by_module",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Get Permissions by Module",
+      "description": "ดูสิทธิ์ตาม Module",
+      "url": "{{ _.base_url }}/auth/permissions/modules/user-management",
+      "method": "GET"
+    },
+    {
+      "_id": "req_modules",
+      "parentId": "fld_permissions",
+      "_type": "request",
+      "name": "Get All Modules",
+      "description": "ดูรายการ Modules ทั้งหมด",
+      "url": "{{ _.base_url }}/auth/modules",
+      "method": "GET"
+    },
+    {
+      "_id": "req_role_assign_permissions",
+      "parentId": "fld_relationships",
+      "_type": "request",
+      "name": "Assign Permissions to Role",
+      "description": "กำหนดสิทธิ์ให้บทบาท (แทนที่ทั้งหมด)",
+      "url": "{{ _.base_url }}/auth/roles/1/permissions",
+      "method": "PUT",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"permissionIds\": [\"1\", \"2\", \"3\", \"4\"]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_role_add_permission",
+      "parentId": "fld_relationships",
+      "_type": "request",
+      "name": "Add Permission to Role",
+      "description": "เพิ่มสิทธิ์ให้บทบาท",
+      "url": "{{ _.base_url }}/auth/roles/1/permissions/4",
+      "method": "POST"
+    },
+    {
+      "_id": "req_role_remove_permission",
+      "parentId": "fld_relationships",
+      "_type": "request",
+      "name": "Remove Permission from Role",
+      "description": "ลบสิทธิ์ออกจากบทบาท",
+      "url": "{{ _.base_url }}/auth/roles/1/permissions/4",
+      "method": "DELETE"
+    },
+    {
+      "_id": "req_user_assign_roles",
+      "parentId": "fld_relationships",
+      "_type": "request",
+      "name": "Assign Roles to User",
+      "description": "กำหนดบทบาทให้ผู้ใช้ (แทนที่ทั้งหมด)",
+      "url": "{{ _.base_url }}/auth/users/1/roles",
+      "method": "PUT",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"roleIds\": [\"1\", \"2\"]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_user_add_role",
+      "parentId": "fld_relationships",
+      "_type": "request",
+      "name": "Add Role to User",
+      "description": "เพิ่มบทบาทให้ผู้ใช้",
+      "url": "{{ _.base_url }}/auth/users/1/roles/2",
+      "method": "POST"
+    },
+    {
+      "_id": "req_user_remove_role",
+      "parentId": "fld_relationships",
+      "_type": "request",
+      "name": "Remove Role from User",
+      "description": "ลบบทบาทออกจากผู้ใช้",
+      "url": "{{ _.base_url }}/auth/users/1/roles/2",
+      "method": "DELETE"
+    },
+    {
+      "_id": "req_users_with_role",
+      "parentId": "fld_query",
+      "_type": "request",
+      "name": "Get Users with Role",
+      "description": "ดูผู้ใช้ที่มีบทบาทนี้",
+      "url": "{{ _.base_url }}/auth/roles/1/users-with-role",
+      "method": "GET"
+    },
+    {
+      "_id": "req_roles_with_permission",
+      "parentId": "fld_query",
+      "_type": "request",
+      "name": "Get Roles with Permission",
+      "description": "ดูบทบาทที่มีสิทธิ์นี้",
+      "url": "{{ _.base_url }}/auth/permissions/1/roles-with-permission",
+      "method": "GET"
+    },
+    {
+      "_id": "fld_auth",
+      "parentId": "wrk_main",
+      "_type": "request_group",
+      "name": "🔐 Authentication",
+      "description": "Authentication endpoints"
+    },
+    {
+      "_id": "fld_users",
+      "parentId": "wrk_main",
+      "_type": "request_group",
+      "name": "👥 User Management",
+      "description": "User CRUD operations"
+    },
+    {
+      "_id": "fld_roles",
+      "parentId": "wrk_main",
+      "_type": "request_group",
+      "name": "🎭 Role Management",
+      "description": "Role CRUD operations"
+    },
+    {
+      "_id": "fld_permissions",
+      "parentId": "wrk_main",
+      "_type": "request_group",
+      "name": "🔑 Permission Management",
+      "description": "Permission CRUD operations"
+    },
+    {
+      "_id": "fld_relationships",
+      "parentId": "wrk_main",
+      "_type": "request_group",
+      "name": "🔗 Relationship Management",
+      "description": "Role-Permission & User-Role relationships"
+    },
+    {
+      "_id": "fld_query",
+      "parentId": "wrk_main",
+      "_type": "request_group",
+      "name": "📊 Query Operations",
+      "description": "Bulk query operations"
+    },
+    {
+      "_id": "wrk_main",
+      "_type": "workspace",
+      "name": "Auth API - RBAC System",
+      "description": "Complete Authentication & Authorization API with Role-Based Access Control"
+    },
+    {
+      "_id": "env_base",
+      "parentId": "wrk_main",
+      "_type": "environment",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "http://localhost:3000"
+      }
+    },
+    {
+      "_id": "env_dev",
+      "parentId": "env_base",
+      "_type": "environment",
+      "name": "Development",
+      "data": {
+        "base_url": "http://localhost:3000"
+      }
+    },
+    {
+      "_id": "env_prod",
+      "parentId": "env_base",
+      "_type": "environment",
+      "name": "Production",
+      "data": {
+        "base_url": "https://your-api-domain.com"
+      }
+    }
+  ]
+}
