@@ -9,8 +9,13 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  Logger,
+  Req,
+  Query,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthService } from './auth.service';
+import { AuthAuditService } from './services/auth-audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { LoginDto } from './dto/login.dto';
@@ -23,33 +28,113 @@ import { AssignRolesDto } from './dto/assign-roles.dto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  private readonly logger = new Logger(AuthController.name);
+
+  constructor(
+    private readonly authService: AuthService,
+    private readonly auditService: AuthAuditService,
+  ) {}
 
   @Post('register')
-  async register(@Body() createUserDto: CreateUserDto) {
-
-    const user = await this.authService.createUser(createUserDto);
-    // Remove password hash from response
-    const { passwordHash, ...userResponse } = user;
-    return {
-      message: 'User created successfully',
-      user: userResponse,
-    };
+  async register(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+    const userAgent = req.get('User-Agent') || 'unknown';
+    
+    // Log registration attempt
+    this.auditService.logRegistrationAttempt(createUserDto.username, createUserDto.email, clientIp, userAgent);
+    
+    try {
+      const user = await this.authService.createUser(createUserDto);
+      
+      // Remove password hash from response
+      const { passwordHash, ...userResponse } = user;
+      
+      const duration = Date.now() - startTime;
+      const roles = user.roles?.map(r => r.code) || [];
+      
+      // Log successful registration
+      this.auditService.logRegistrationSuccess(
+        user.username,
+        user.email,
+        user.id,
+        clientIp,
+        userAgent,
+        duration,
+        roles
+      );
+      
+      return {
+        message: 'User created successfully',
+        user: userResponse,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      // Log failed registration
+      this.auditService.logRegistrationFailure(
+        createUserDto.username,
+        createUserDto.email,
+        clientIp,
+        userAgent,
+        duration,
+        error.message
+      );
+      
+      throw error;
+    }
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto) {
-    const { user, permissions } = await this.authService.login(loginDto);
+  async login(@Body() loginDto: LoginDto, @Req() req: Request) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+    const userAgent = req.get('User-Agent') || 'unknown';
     
-    // Remove password hash from response
-    const { passwordHash, ...userResponse } = user;
+    // Log login attempt
+    await this.auditService.logLoginAttempt(loginDto.username, clientIp, userAgent);
     
-    return {
-      message: 'Login successful',
-      user: userResponse,
-      permissions,
-    };
+    try {
+      const { user, permissions } = await this.authService.login(loginDto);
+      
+      // Remove password hash from response
+      const { passwordHash, ...userResponse } = user;
+      
+      const duration = Date.now() - startTime;
+      const roles = user.roles?.map(r => r.code) || [];
+      
+      // Log successful login
+      await this.auditService.logLoginSuccess(
+        user.username,
+        user.email,
+        user.id,
+        clientIp,
+        userAgent,
+        duration,
+        roles,
+        permissions?.length || 0
+      );
+      
+      return {
+        message: 'Login successful',
+        user: userResponse,
+        permissions,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      // Log failed login
+      await this.auditService.logLoginFailure(
+        loginDto.username,
+        clientIp,
+        userAgent,
+        duration,
+        error.message
+      );
+      
+      throw error;
+    }
   }
 
   @Get('users/:id')
@@ -285,5 +370,25 @@ export class AuthController {
   async getRolesWithPermission(@Param('id') permissionId: string) {
     const roles = await this.authService.getRolesWithPermission(permissionId);
     return { roles };
+  }
+
+  // Audit Log Endpoints
+  @Get('audit/recent-logins')
+  async getRecentLoginAttempts() {
+    const logs = await this.auditService.getRecentLoginAttempts(100);
+    return { logs };
+  }
+
+  @Get('audit/failed-logins')
+  async getFailedLoginAttempts() {
+    const logs = await this.auditService.getFailedLoginAttempts(60); // Last 60 minutes
+    return { logs };
+  }
+
+  @Get('audit/login-statistics')
+  async getLoginStatistics(@Query('timeWindow') timeWindow?: string) {
+    const timeWindowNum = timeWindow ? parseInt(timeWindow, 10) : 60;
+    const stats = await this.auditService.getLoginStatistics(timeWindowNum);
+    return { statistics: stats, timeWindowMinutes: timeWindowNum };
   }
 }

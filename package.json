@@ -19,7 +19,9 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:health": "ts-node scripts/db-health-check.ts",
-    "seed:auth": "ts-node scripts/seed-auth-data.ts"
+    "db:test": "ts-node scripts/test-db-connection.ts",
+    "seed:auth": "ts-node scripts/seed-auth-data.ts",
+    "setup:logging": "ts-node scripts/setup-logging-database.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -49,6 +51,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
     "@types/supertest": "^6.0.2",
+    "dotenv": "^16.4.5",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
