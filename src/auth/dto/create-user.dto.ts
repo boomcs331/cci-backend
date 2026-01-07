@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsBoolean } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsBoolean, ValidateIf } from 'class-validator';
 
 export class CreateUserDto {
   @IsString()
@@ -6,9 +6,11 @@ export class CreateUserDto {
   @MaxLength(50)
   username: string;
 
-  @IsEmail()
+  @IsOptional()
+  @ValidateIf((o) => o.email !== '')
+  @IsEmail({}, { message: 'email must be a valid email' })
   @MaxLength(255)
-  email: string;
+  email?: string;
 
   @IsString()
   @MinLength(6)

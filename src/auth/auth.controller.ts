@@ -12,6 +12,7 @@ import {
   Logger,
   Req,
   Query,
+  ConflictException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
@@ -42,7 +43,7 @@ export class AuthController {
     const userAgent = req.get('User-Agent') || 'unknown';
     
     // Log registration attempt
-    this.auditService.logRegistrationAttempt(createUserDto.username, createUserDto.email, clientIp, userAgent);
+    this.auditService.logRegistrationAttempt(createUserDto.username, createUserDto.email || '', clientIp, userAgent);
     
     try {
       const user = await this.authService.createUser(createUserDto);
@@ -74,7 +75,7 @@ export class AuthController {
       // Log failed registration
       this.auditService.logRegistrationFailure(
         createUserDto.username,
-        createUserDto.email,
+        createUserDto.email || '',
         clientIp,
         userAgent,
         duration,
@@ -150,6 +151,15 @@ export class AuthController {
     return { permissions };
   }
 
+  @Post('roles-with-permissions')
+  async createRoleWithPermissions(@Body() createRoleDto: CreateRoleDto) {
+    const role = await this.authService.createRole(createRoleDto);
+    return {
+      message: 'Role with permissions created successfully',
+      role,
+    };
+  }
+
   @Post('roles')
   async createRole(@Body() createRoleDto: CreateRoleDto) {
     const role = await this.authService.createRole(createRoleDto);
@@ -207,11 +217,28 @@ export class AuthController {
 
   @Put('users/:id')
   async updateUser(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    const user = await this.authService.updateUser(id, updateUserDto);
-    return {
-      message: 'User updated successfully',
-      user,
-    };
+    try {
+      const user = await this.authService.updateUser(id, updateUserDto);
+      return {
+        message: 'User updated successfully',
+        user,
+      };
+    } catch (error) {
+      this.logger.error(`Update user error: ${error.message}`, error.stack);
+      
+      // Check for duplicate key constraint violation
+      if (error.message.includes('duplicate key value violates unique constraint')) {
+        if (error.message.includes('users_username_key')) {
+          throw new ConflictException('Username already exists');
+        }
+        if (error.message.includes('users_email_key')) {
+          throw new ConflictException('Email already exists');
+        }
+        throw new ConflictException('Duplicate data detected');
+      }
+      
+      throw error;
+    }
   }
 
   @Delete('users/:id')

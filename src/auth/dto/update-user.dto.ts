@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsEmail, IsBoolean, IsArray } from 'class-validator';
+import { IsOptional, IsString, IsEmail, IsBoolean, IsArray, ValidateIf } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -6,7 +6,8 @@ export class UpdateUserDto {
   username?: string;
 
   @IsOptional()
-  @IsEmail()
+  @ValidateIf((o) => o.email !== '')
+  @IsEmail({}, { message: 'email must be a valid email' })
   email?: string;
 
   @IsOptional()

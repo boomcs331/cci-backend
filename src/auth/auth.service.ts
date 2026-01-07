@@ -265,9 +265,12 @@ export class AuthService {
 
   // Additional User CRUD Operations
   async findAllUsers(): Promise<User[]> {
-    const users = await this.userRepository.find({
-      relations: ['roles', 'roles.permissions'],
-    });
+    const users = await this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.roles', 'roles')
+      .leftJoinAndSelect('roles.permissions', 'permissions')
+      .orderBy('COALESCE(user.updatedAt, user.createdAt)', 'DESC')
+      .getMany();
 
     // Remove password hash from all users
     return users.map(user => {
