@@ -3,6 +3,7 @@ import { MaterialsType } from './materials-type.entity';
 import { MaterialsLocation } from './materials-location.entity';
 import { ItemsName } from './items-name.entity';
 import { MaterialsStock } from './materials-stock.entity';
+import { Supplier } from './supplier.entity';
 
 @Entity('materials')
 export class Material {
@@ -42,6 +43,12 @@ export class Material {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
+  @Column({ name: 'min_stock', type: 'smallint', nullable: true })
+  minStock: number;
+
+  @Column({ name: 'supplier_id', nullable: true })
+  supplierId: number;
+
   @ManyToOne(() => MaterialsType, materialsType => materialsType.materials)
   @JoinColumn({ name: 'mat_type_id' })
   materialsType: MaterialsType;
@@ -49,6 +56,10 @@ export class Material {
   @ManyToOne(() => MaterialsLocation, location => location.materials)
   @JoinColumn({ name: 'default_location_id' })
   defaultLocation: MaterialsLocation;
+
+  @ManyToOne(() => Supplier, supplier => supplier.materials)
+  @JoinColumn({ name: 'supplier_id' })
+  supplier: Supplier;
 
   @OneToOne(() => ItemsName, itemsName => itemsName.material)
   itemsName: ItemsName;

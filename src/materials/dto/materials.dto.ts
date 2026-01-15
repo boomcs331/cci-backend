@@ -31,6 +31,14 @@ export class CreateMaterialDto {
 
   @IsOptional()
   @IsNumber()
+  minStock?: number;
+
+  @IsOptional()
+  @IsNumber()
+  supplierId?: number;
+
+  @IsOptional()
+  @IsNumber()
   initialStock?: number;
 
   @IsOptional()
@@ -76,6 +84,14 @@ export class UpdateMaterialDto {
   unit?: string;
 
   @IsOptional()
+  @IsNumber()
+  minStock?: number;
+
+  @IsOptional()
+  @IsNumber()
+  supplierId?: number;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
@@ -116,6 +132,22 @@ export class CreateItemsNameDto {
   createBy?: string;
 }
 
+export class StockTransactionDto {
+  @IsNumber()
+  materialId: number;
+
+  @IsNumber()
+  quantity: number;
+
+  @IsOptional()
+  @IsString()
+  remark?: string;
+
+  @IsOptional()
+  @IsString()
+  createBy?: string;
+}
+
 export class CreateMaterialsLocationDto {
   @IsString()
   code: string;
@@ -131,4 +163,71 @@ export class CreateMaterialsLocationDto {
   @IsOptional()
   @IsString()
   createBy?: string;
+}
+
+
+export class CreateSupplierDto {
+  @IsString()
+  code: string;
+
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  contact_person?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  createBy?: string;
+}
+
+export class UpdateSupplierDto {
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  contact_person?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  updateBy?: string;
 }

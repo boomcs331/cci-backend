@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Material, MaterialsType, MaterialsLocation, ItemsName, MaterialsStock } from './entities';
-import { CreateMaterialDto, UpdateMaterialDto, CreateMaterialsTypeDto, CreateMaterialsLocationDto, CreateItemsNameDto } from './dto/materials.dto';
+import { Material, MaterialsType, MaterialsLocation, ItemsName, MaterialsStock, Supplier } from './entities';
+import { CreateMaterialDto, UpdateMaterialDto, CreateMaterialsTypeDto, CreateMaterialsLocationDto, CreateItemsNameDto, StockTransactionDto, CreateSupplierDto, UpdateSupplierDto } from './dto/materials.dto';
 
 @Injectable()
 export class MaterialsService {
@@ -17,6 +17,8 @@ export class MaterialsService {
     private itemsNameRepository: Repository<ItemsName>,
     @InjectRepository(MaterialsStock)
     private materialsStockRepository: Repository<MaterialsStock>,
+    @InjectRepository(Supplier)
+    private supplierRepository: Repository<Supplier>,
     private dataSource: DataSource,
   ) {}
 
@@ -57,26 +59,53 @@ export class MaterialsService {
     });
   }
 
-  async findAllMaterials(page: number = 1, limit: number = 10, search?: string, sortBy: string = 'id', sortOrder: string = 'ASC'): Promise<{
+  async findAllMaterials(
+    page: number = 1, 
+    limit: number = 10, 
+    search?: string, 
+    sortBy: string = 'id', 
+    sortOrder: string = 'ASC',
+    locationId?: number,
+    unit?: string,
+    isActive?: boolean
+  ): Promise<{
     materials: Material[];
     total: number;
     page: number;
     limit: number;
     totalPages: number;
   }> {
-    console.log('📊 Service received:', { page, limit, search, sortBy, sortOrder });
+    console.log('📊 Service received:', { page, limit, search, sortBy, sortOrder, locationId, unit, isActive });
     
     const queryBuilder = this.materialRepository
       .createQueryBuilder('material')
       .leftJoinAndSelect('material.materialsType', 'materialsType')
       .leftJoinAndSelect('material.defaultLocation', 'defaultLocation')
+      .leftJoinAndSelect('material.supplier', 'supplier')
       .leftJoinAndSelect('material.stock', 'stock')
-      .leftJoinAndSelect('material.itemsName', 'itemsName')
-      .where('material.isActive = :isActive', { isActive: true });
+      .leftJoinAndSelect('material.itemsName', 'itemsName');
 
+    // Base filter for isActive
+    if (isActive !== undefined) {
+      queryBuilder.where('material.isActive = :isActive', { isActive });
+    } else {
+      queryBuilder.where('material.isActive = :isActive', { isActive: true });
+    }
+
+    // Location filter
+    if (locationId) {
+      queryBuilder.andWhere('material.defaultLocationId = :locationId', { locationId });
+    }
+
+    // Unit filter
+    if (unit) {
+      queryBuilder.andWhere('material.unit ILIKE :unit', { unit: `%${unit}%` });
+    }
+
+    // Search filter
     if (search) {
       queryBuilder.andWhere(
-        '(material.matCode ILIKE :search OR materialsType.name ILIKE :search OR defaultLocation.name ILIKE :search OR itemsName.name ILIKE :search)',
+        '(material.matCode ILIKE :search OR materialsType.name ILIKE :search OR defaultLocation.name ILIKE :search OR itemsName.name ILIKE :search OR material.unit ILIKE :search)',
         { search: `%${search}%` }
       );
     }
@@ -107,7 +136,7 @@ export class MaterialsService {
   async findMaterialById(id: number): Promise<Material> {
     const material = await this.materialRepository.findOne({
       where: { id },
-      relations: ['materialsType', 'defaultLocation', 'itemsName', 'stock']
+      relations: ['materialsType', 'defaultLocation', 'supplier', 'itemsName', 'stock']
     });
     if (!material) throw new NotFoundException('Material not found');
     return material;
@@ -147,6 +176,12 @@ export class MaterialsService {
         console.log('✅ Location exists');
       }
 
+      // Validate supplierId if provided
+      if (dto.supplierId) {
+        const supplierExists = await manager.findOne(Supplier, { where: { id: dto.supplierId } });
+        if (!supplierExists) throw new NotFoundException('Supplier not found');
+      }
+
       // Update material fields using raw query
       console.log('🔄 Updating fields with raw SQL...');
       
@@ -179,6 +214,10 @@ export class MaterialsService {
       if (dto.unit !== undefined) {
         updateFields.push(`unit = $${updateFields.length + 1}`);
         updateValues.push(dto.unit);
+      }
+      if (dto.supplierId !== undefined) {
+        updateFields.push(`supplier_id = $${updateFields.length + 1}`);
+        updateValues.push(dto.supplierId);
       }
       if (dto.isActive !== undefined) {
         updateFields.push(`is_active = $${updateFields.length + 1}`);
@@ -258,8 +297,36 @@ export class MaterialsService {
   }
 
   async deleteMaterial(id: number): Promise<void> {
-    const material = await this.findMaterialById(id);
-    await this.materialRepository.remove(material);
+    console.log('🗑️ Delete Material Service - Input:', { id });
+    
+    return await this.dataSource.transaction(async manager => {
+      // Check if material exists
+      const material = await manager.findOne(Material, { 
+        where: { id },
+        relations: ['materialsType', 'defaultLocation', 'itemsName', 'stock']
+      });
+      if (!material) throw new NotFoundException('Material not found');
+      
+      console.log('📋 Material to delete:', {
+        id: material.id,
+        matCode: material.matCode
+      });
+
+      // Delete items_name first (foreign key constraint)
+      console.log('🗑️ Deleting items_name...');
+      await manager.query('DELETE FROM items_name WHERE material_id = $1', [id]);
+      console.log('✅ Items name deleted');
+
+      // Delete materials_stock
+      console.log('🗑️ Deleting materials_stock...');
+      await manager.query('DELETE FROM materials_stock WHERE material_id = $1', [id]);
+      console.log('✅ Materials stock deleted');
+
+      // Delete material
+      console.log('🗑️ Deleting material...');
+      await manager.query('DELETE FROM materials WHERE id = $1', [id]);
+      console.log('✅ Material deleted');
+    });
   }
 
   // Materials Type CRUD
@@ -304,5 +371,131 @@ export class MaterialsService {
       createBy: dto.createBy ?? 'system'
     });
     return await this.itemsNameRepository.save(itemName);
+  }
+
+  // Stock Transaction methods
+  async receiveStock(dto: StockTransactionDto): Promise<any> {
+    console.log('📦 Receive Stock - Input:', dto);
+    
+    return await this.dataSource.transaction(async manager => {
+      // Check if material exists
+      const material = await manager.findOne(Material, { where: { id: dto.materialId } });
+      if (!material) throw new NotFoundException('Material not found');
+      
+      // Get current stock
+      const stock = await manager.findOne(MaterialsStock, { where: { materialId: dto.materialId } });
+      if (!stock) throw new NotFoundException('Stock record not found');
+      
+      console.log('📋 Current stock:', {
+        totalQty: stock.totalQty,
+        availableQty: stock.availableQty,
+        reservedQty: stock.reservedQty
+      });
+      
+      // Update stock using raw SQL
+      const newTotalQty = stock.totalQty + dto.quantity;
+      const newAvailableQty = stock.availableQty + dto.quantity;
+      
+      await manager.query(
+        'UPDATE materials_stock SET total_qty = $1, available_qty = $2, update_date = $3 WHERE material_id = $4',
+        [newTotalQty, newAvailableQty, new Date(), dto.materialId]
+      );
+      
+      console.log('✅ Stock updated:', {
+        received: dto.quantity,
+        newTotalQty,
+        newAvailableQty
+      });
+      
+      return {
+        materialId: dto.materialId,
+        receivedQuantity: dto.quantity,
+        newTotalQty,
+        newAvailableQty,
+        remark: dto.remark
+      };
+    });
+  }
+
+  async issueStock(dto: StockTransactionDto): Promise<any> {
+    console.log('📤 Issue Stock - Input:', dto);
+    
+    return await this.dataSource.transaction(async manager => {
+      // Check if material exists
+      const material = await manager.findOne(Material, { where: { id: dto.materialId } });
+      if (!material) throw new NotFoundException('Material not found');
+      
+      // Get current stock
+      const stock = await manager.findOne(MaterialsStock, { where: { materialId: dto.materialId } });
+      if (!stock) throw new NotFoundException('Stock record not found');
+      
+      console.log('📋 Current stock:', {
+        totalQty: stock.totalQty,
+        availableQty: stock.availableQty,
+        reservedQty: stock.reservedQty
+      });
+      
+      // Check if enough stock available
+      if (stock.availableQty < dto.quantity) {
+        throw new ConflictException(`Insufficient stock. Available: ${stock.availableQty}, Requested: ${dto.quantity}`);
+      }
+      
+      // Update stock using raw SQL
+      const newTotalQty = stock.totalQty - dto.quantity;
+      const newAvailableQty = stock.availableQty - dto.quantity;
+      
+      await manager.query(
+        'UPDATE materials_stock SET total_qty = $1, available_qty = $2, update_date = $3 WHERE material_id = $4',
+        [newTotalQty, newAvailableQty, new Date(), dto.materialId]
+      );
+      
+      console.log('✅ Stock updated:', {
+        issued: dto.quantity,
+        newTotalQty,
+        newAvailableQty
+      });
+      
+      return {
+        materialId: dto.materialId,
+        issuedQuantity: dto.quantity,
+        newTotalQty,
+        newAvailableQty,
+        remark: dto.remark
+      };
+    });
+  }
+
+  // Supplier CRUD
+  async createSupplier(dto: CreateSupplierDto): Promise<Supplier> {
+    const existing = await this.supplierRepository.findOne({ where: { code: dto.code } });
+    if (existing) throw new ConflictException('Supplier code already exists');
+
+    const supplier = this.supplierRepository.create({
+      ...dto,
+      is_active: dto.is_active ?? true,
+      create_by: dto.createBy ?? 'system'
+    });
+    return await this.supplierRepository.save(supplier);
+  }
+
+  async findAllSuppliers(): Promise<Supplier[]> {
+    return await this.supplierRepository.find({ where: { is_active: true } });
+  }
+
+  async findSupplierById(id: number): Promise<Supplier> {
+    const supplier = await this.supplierRepository.findOne({ where: { id } });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+    return supplier;
+  }
+
+  async updateSupplier(id: number, dto: UpdateSupplierDto): Promise<Supplier> {
+    const supplier = await this.findSupplierById(id);
+    Object.assign(supplier, { ...dto, update_by: dto.updateBy ?? 'system' });
+    return await this.supplierRepository.save(supplier);
+  }
+
+  async deleteSupplier(id: number): Promise<void> {
+    const supplier = await this.findSupplierById(id);
+    await this.supplierRepository.remove(supplier);
   }
 }
