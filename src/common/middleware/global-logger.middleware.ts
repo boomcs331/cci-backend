@@ -20,10 +20,10 @@ export class GlobalLoggerMiddleware implements NestMiddleware {
     const logHeaders = this.sanitizeHeaders(headers);
 
     this.logger.log(`[${requestId}] ${method} ${originalUrl} - IP: ${clientIp} - User-Agent: ${userAgent}`);
-    this.logger.debug(`[${requestId}] Query: ${JSON.stringify(query)}`);
+    /* this.logger.debug(`[${requestId}] Query: ${JSON.stringify(query)}`);
     this.logger.debug(`[${requestId}] Params: ${JSON.stringify(params)}`);
     this.logger.debug(`[${requestId}] Body: ${JSON.stringify(logBody)}`);
-    this.logger.debug(`[${requestId}] Headers: ${JSON.stringify(logHeaders)}`);
+    this.logger.debug(`[${requestId}] Headers: ${JSON.stringify(logHeaders)}`); */
 
     // Override response methods to log response
     const originalSend = res.send;

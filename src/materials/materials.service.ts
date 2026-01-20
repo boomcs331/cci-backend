@@ -59,6 +59,14 @@ export class MaterialsService {
     });
   }
 
+  async findAllMaterialsWithoutPagination(): Promise<Material[]> {
+    return await this.materialRepository.find({
+      relations: ['materialsType', 'defaultLocation', 'supplier', 'itemsName', 'stock'],
+      where: { isActive: true },
+      order: { id: 'ASC' }
+    });
+  }
+
   async findAllMaterials(
     page: number = 1, 
     limit: number = 10, 

@@ -14,6 +14,12 @@ export class MaterialsController {
     return ResponseHelper.success(material, 'Material created successfully');
   }
 
+  @Get('all')
+  async getAllMaterialsWithoutPagination() {
+    const materials = await this.materialsService.findAllMaterialsWithoutPagination();
+    return ResponseHelper.success(materials, 'Materials retrieved successfully');
+  }
+
   @Get()
   async getAllMaterials(
     @Query('page') page: string = '1',

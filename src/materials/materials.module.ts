@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MaterialsController } from './materials.controller';
 import { MaterialsService } from './materials.service';
 import { Material, MaterialsType, MaterialsLocation, ItemsName, MaterialsStock, Supplier } from './entities';
+import { ReceivingIssuingModule } from './receiving-issuing';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { Material, MaterialsType, MaterialsLocation, ItemsName, MaterialsStock, 
       MaterialsStock,
       Supplier,
     ]),
+    ReceivingIssuingModule,
   ],
   controllers: [MaterialsController],
   providers: [MaterialsService],
