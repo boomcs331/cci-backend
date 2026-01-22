@@ -1,0 +1,108 @@
+{
+  "material_issuing_examples": {
+    "1_normal_production": {
+      "description": "จ่ายออกแบบสั่งผลิตปกติ - ใช้สำหรับการผลิตสินค้าตามใบสั่งผลิต",
+      "endpoint": "POST /materials/transactions/issue",
+      "payload": {
+        "issuingType": "NORMAL_PRODUCTION",
+        "materialId": 1,
+        "quantity": 100,
+        "department": "Production",
+        "workOrderNo": "WO-2026-001",
+        "remark": "สำหรับผลิตสินค้า Batch A",
+        "createBy": "user123"
+      },
+      "expected_issuing_no_prefix": "ISS-PRD-"
+    },
+    "2_stock_deduction": {
+      "description": "จ่ายออกแบบตัดสต็อก - ใช้สำหรับตัดสต็อกเมื่อวัสดุเสียหาย หมดอายุ หรือปรับปรุงสต็อก",
+      "endpoint": "POST /materials/transactions/issue",
+      "payload": {
+        "issuingType": "STOCK_DEDUCTION",
+        "materialId": 2,
+        "quantity": 50,
+        "department": "Warehouse",
+        "remark": "ตัดสต็อกเนื่องจากวัสดุเสียหายจากการขนส่ง",
+        "createBy": "user456"
+      },
+      "expected_issuing_no_prefix": "ISS-STK-"
+    },
+    "3_spare_parts_replacement": {
+      "description": "จ่ายออกแบบเบิกอะไหล่ทดแทน - ใช้สำหรับเบิกอะไหล่เพื่อซ่อมบำรุงเครื่องจักร",
+      "endpoint": "POST /materials/transactions/issue",
+      "payload": {
+        "issuingType": "SPARE_PARTS_REPLACEMENT",
+        "materialId": 3,
+        "quantity": 5,
+        "department": "Maintenance",
+        "machineNo": "MC-001",
+        "partNo": "PART-12345",
+        "requester": "นาย ก. ช่างซ่อม",
+        "remark": "เปลี่ยนอะไหล่เครื่องจักร MC-001",
+        "createBy": "user789"
+      },
+      "expected_issuing_no_prefix": "ISS-SPR-"
+    }
+  },
+  "query_examples": {
+    "get_all_issuings": {
+      "description": "ดึงรายการการจ่ายออกทั้งหมด",
+      "endpoint": "GET /materials/transactions/issuings",
+      "query_params": {
+        "page": 1,
+        "limit": 10,
+        "sortBy": "issuingDate",
+        "sortOrder": "DESC"
+      }
+    },
+    "filter_by_type_normal_production": {
+      "description": "กรองเฉพาะการจ่ายออกแบบสั่งผลิตปกติ",
+      "endpoint": "GET /materials/transactions/issuings",
+      "query_params": {
+        "issuingType": "NORMAL_PRODUCTION",
+        "page": 1,
+        "limit": 20
+      }
+    },
+    "filter_by_type_stock_deduction": {
+      "description": "กรองเฉพาะการจ่ายออกแบบตัดสต็อก",
+      "endpoint": "GET /materials/transactions/issuings",
+      "query_params": {
+        "issuingType": "STOCK_DEDUCTION",
+        "department": "Warehouse"
+      }
+    },
+    "filter_by_type_spare_parts": {
+      "description": "กรองเฉพาะการจ่ายออกแบบเบิกอะไหล่ทดแทน",
+      "endpoint": "GET /materials/transactions/issuings",
+      "query_params": {
+        "issuingType": "SPARE_PARTS_REPLACEMENT",
+        "department": "Maintenance"
+      }
+    },
+    "search_by_machine_no": {
+      "description": "ค้นหาจากหมายเลขเครื่องจักร",
+      "endpoint": "GET /materials/transactions/issuings",
+      "query_params": {
+        "search": "MC-001",
+        "issuingType": "SPARE_PARTS_REPLACEMENT"
+      }
+    },
+    "search_by_work_order": {
+      "description": "ค้นหาจากเลขที่ใบสั่งผลิต",
+      "endpoint": "GET /materials/transactions/issuings",
+      "query_params": {
+        "search": "WO-2026",
+        "issuingType": "NORMAL_PRODUCTION"
+      }
+    }
+  },
+  "curl_examples": {
+    "create_normal_production": "curl -X POST http://localhost:3000/materials/transactions/issue -H \"Content-Type: application/json\" -d '{\"issuingType\":\"NORMAL_PRODUCTION\",\"materialId\":1,\"quantity\":100,\"department\":\"Production\",\"workOrderNo\":\"WO-2026-001\",\"remark\":\"สำหรับผลิตสินค้า Batch A\",\"createBy\":\"user123\"}'",
+    "create_stock_deduction": "curl -X POST http://localhost:3000/materials/transactions/issue -H \"Content-Type: application/json\" -d '{\"issuingType\":\"STOCK_DEDUCTION\",\"materialId\":2,\"quantity\":50,\"department\":\"Warehouse\",\"remark\":\"ตัดสต็อกเนื่องจากวัสดุเสียหาย\",\"createBy\":\"user456\"}'",
+    "create_spare_parts": "curl -X POST http://localhost:3000/materials/transactions/issue -H \"Content-Type: application/json\" -d '{\"issuingType\":\"SPARE_PARTS_REPLACEMENT\",\"materialId\":3,\"quantity\":5,\"department\":\"Maintenance\",\"machineNo\":\"MC-001\",\"partNo\":\"PART-12345\",\"requester\":\"นาย ก. ช่างซ่อม\",\"remark\":\"เปลี่ยนอะไหล่เครื่องจักร MC-001\",\"createBy\":\"user789\"}'",
+    "get_all": "curl -X GET \"http://localhost:3000/materials/transactions/issuings?page=1&limit=10\"",
+    "filter_by_type": "curl -X GET \"http://localhost:3000/materials/transactions/issuings?issuingType=NORMAL_PRODUCTION&page=1&limit=20\"",
+    "search": "curl -X GET \"http://localhost:3000/materials/transactions/issuings?search=MC-001&issuingType=SPARE_PARTS_REPLACEMENT\""
+  }
+}

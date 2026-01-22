@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ReceivingIssuingService } from './receiving-issuing.service';
-import { CreateReceivingDto, CreateIssuingDto } from './receiving-issuing.dto';
+import { CreateReceivingDto, CreateIssuingDto } from './dto';
 import { ResponseHelper } from '../../common/helpers/response.helper';
 
 @Controller('materials/transactions')
@@ -56,14 +56,15 @@ export class ReceivingIssuingController {
     @Query('sortOrder') sortOrder: string = 'DESC',
     @Query('materialId') materialId?: string,
     @Query('department') department?: string,
-    @Query('status') status?: string
+    @Query('status') status?: string,
+    @Query('issuingType') issuingType?: string
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
     const materialIdNum = materialId ? parseInt(materialId) : undefined;
 
     const result = await this.service.getAllIssuings(
-      pageNum, limitNum, search, sortBy, sortOrder, materialIdNum, department, status
+      pageNum, limitNum, search, sortBy, sortOrder, materialIdNum, department, status, issuingType
     );
     return ResponseHelper.paginated(
       result.issuings,
@@ -84,5 +85,30 @@ export class ReceivingIssuingController {
   async getLotTransactions(@Param('qrCode') qrCode: string) {
     const transactions = await this.service.getLotTransactions(qrCode);
     return ResponseHelper.success(transactions, 'Transactions retrieved successfully');
+  }
+
+  @Get('lots')
+  async getAllLots(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+    @Query('materialId') materialId?: string,
+    @Query('status') status?: string,
+    @Query('locationId') locationId?: string
+  ) {
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const materialIdNum = materialId ? parseInt(materialId) : undefined;
+    const locationIdNum = locationId ? parseInt(locationId) : undefined;
+
+    const result = await this.service.getAllLots(
+      pageNum, limitNum, materialIdNum, status, locationIdNum
+    );
+    return ResponseHelper.paginated(
+      result.lots,
+      result.page,
+      result.limit,
+      result.total,
+      'Lots retrieved successfully'
+    );
   }
 }

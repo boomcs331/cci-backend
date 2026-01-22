@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { MaterialReceiving, MaterialReceivingLot, MaterialIssuing, MaterialIssuingLot, MaterialTransaction } from './receiving-issuing.entity';
+import { MaterialReceiving, MaterialReceivingLot, MaterialIssuing, MaterialIssuingLot, MaterialTransaction } from './entities';
 import { Material, MaterialsStock } from '../entities';
-import { CreateReceivingDto, CreateIssuingDto } from './receiving-issuing.dto';
+import { CreateReceivingDto, CreateIssuingDto } from './dto';
 
 @Injectable()
 export class ReceivingIssuingService {
@@ -207,7 +207,7 @@ export class ReceivingIssuingService {
           quantity: -issueFromThisLot,
           remainingQuantity: lot.remainingQuantity,
           referenceNo: issuingNo,
-          remark: dto.remark,
+          remark: dto.remark || '',
           createBy: dto.createBy ?? 'system'
         });
         await manager.save(transaction);
@@ -252,6 +252,67 @@ export class ReceivingIssuingService {
       relations: ['material', 'material.itemsName'],
       order: { createDate: 'DESC' }
     });
+  }
+
+  async getAllLots(
+    page: number = 1,
+    limit: number = 10,
+    materialId?: number,
+    status?: string,
+    locationId?: number
+  ): Promise<{
+    lots: MaterialReceivingLot[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const queryBuilder = this.receivingLotRepository
+      .createQueryBuilder('lot')
+      .leftJoinAndSelect('lot.material', 'material')
+      .leftJoinAndSelect('material.itemsName', 'itemsName')
+      .leftJoinAndSelect('lot.location', 'location')
+      .leftJoinAndSelect('lot.receiving', 'receiving')
+      .leftJoinAndSelect('receiving.supplier', 'supplier');
+
+    // Material filter
+    if (materialId) {
+      queryBuilder.where('lot.materialId = :materialId', { materialId });
+    }
+
+    // Status filter
+    if (status) {
+      queryBuilder.andWhere('lot.status = :status', { status });
+    } else {
+      // Default: show only available and partial used
+      queryBuilder.andWhere('lot.status IN (:...statuses)', { 
+        statuses: ['AVAILABLE', 'PARTIAL_USED'] 
+      });
+    }
+
+    // Location filter
+    if (locationId) {
+      queryBuilder.andWhere('lot.locationId = :locationId', { locationId });
+    }
+
+    // Only show lots with remaining quantity
+    queryBuilder.andWhere('lot.remainingQuantity > 0');
+
+    queryBuilder.orderBy('lot.createDate', 'ASC');
+
+    const total = await queryBuilder.getCount();
+    const lots = await queryBuilder
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    return {
+      lots,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    };
   }
 
   async getAllReceivings(
@@ -329,7 +390,8 @@ export class ReceivingIssuingService {
     sortOrder: string = 'DESC',
     materialId?: number,
     department?: string,
-    status?: string
+    status?: string,
+    issuingType?: string
   ): Promise<{
     issuings: MaterialIssuing[];
     total: number;
@@ -358,6 +420,11 @@ export class ReceivingIssuingService {
     if (department) {
       queryBuilder.andWhere('issuing.department ILIKE :department', { department: `%${department}%` });
     }
+
+    // Issuing type filter - removed (column doesn't exist)
+    // if (issuingType) {
+    //   queryBuilder.andWhere('issuing.issuingType = :issuingType', { issuingType });
+    // }
 
     // Search filter
     if (search) {
