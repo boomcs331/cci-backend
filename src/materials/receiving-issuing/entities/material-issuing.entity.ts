@@ -58,6 +58,12 @@ export class MaterialIssuing {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
+  @Column({ name: 'production_order_id', nullable: true })
+  productionOrderId: number;
+
+  @Column({ name: 'required_quantity', type: 'decimal', precision: 15, scale: 4, nullable: true })
+  requiredQuantity: number;
+
   @ManyToOne(() => Material)
   @JoinColumn({ name: 'material_id' })
   material: Material;

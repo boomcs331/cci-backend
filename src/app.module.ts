@@ -7,6 +7,8 @@ import { DatabaseModule } from '../libs/common/src/database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
 import { MaterialsModule } from './materials/materials.module';
+import { ProductsModule } from './products/products.module';
+import { ProductionModule } from './production/production.module';
 import { GlobalLoggerMiddleware } from './common/middleware/global-logger.middleware';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -20,6 +22,8 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     CommonModule,
     AuthModule,
     MaterialsModule,
+    ProductsModule,
+    ProductionModule,
   ],
   controllers: [AppController],
   providers: [
