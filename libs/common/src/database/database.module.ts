@@ -18,7 +18,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         database: config.get<string>('DB_NAME', 'tfac_db'),
         autoLoadEntities: true,   // entity จากทุก module จะถูกโหลดอัตโนมัติ
         synchronize: false,       // แนะนำให้ false ในจริง / ใช้ migration แทน
-        logging: true,
+        logging: false,
       }),
     }),
   ],

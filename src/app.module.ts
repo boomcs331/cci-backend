@@ -1,15 +1,14 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from '../libs/common/src/database/database.module';
-import { AuthModule } from './auth/auth.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { CommonModule } from './common/common.module';
-import { MaterialsModule } from './materials/materials.module';
-import { ProductsModule } from './products/products.module';
-import { GlobalLoggerMiddleware } from './common/middleware/global-logger.middleware';
-import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { MaterialsModule } from './modules/materials/materials.module';
+import { ProductsModule } from './modules/products/products.module';
+import { AuditModule } from './core/audit/audit.module';
+
 
 @Module({
   imports: [
@@ -19,6 +18,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     }),
     DatabaseModule,
     CommonModule,
+    AuditModule,
     AuthModule,
     MaterialsModule,
     ProductsModule,
@@ -26,16 +26,6 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
   controllers: [AppController],
   providers: [
     AppService,
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: LoggingInterceptor,
-    },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(GlobalLoggerMiddleware)
-      .forRoutes('*'); // Apply to all routes
-  }
-}
+export class AppModule {}
