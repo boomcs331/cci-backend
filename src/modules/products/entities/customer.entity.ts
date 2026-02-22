@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Product } from './product.entity';
 
 @Entity('customers')
 export class Customer {
@@ -34,4 +35,7 @@ export class Customer {
 
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
+
+  @OneToMany(() => Product, product => product.customer)
+  products: Product[];
 }

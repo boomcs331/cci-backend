@@ -1,6 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { Material } from '../../entities/material.entity';
+import { IssuingType } from '../../entities/issuing-type.entity';
 import { MaterialIssuingLot } from './material-issuing-lot.entity';
+import { MaterialIssuingDocument } from './material-issuing-document.entity';
 
 @Entity('material_issuing')
 export class MaterialIssuing {
@@ -13,8 +15,11 @@ export class MaterialIssuing {
   @Column({ name: 'issuing_date', type: 'timestamp' })
   issuingDate: Date;
 
-  @Column({ name: 'issuing_type', length: 50, default: 'NORMAL_PRODUCTION' })
+  @Column({ name: 'issuing_type', length: 50, nullable: true })
   issuingType: string;
+
+  @Column({ name: 'issuing_type_id', nullable: true })
+  issuingTypeId: number;
 
   @Column({ name: 'material_id' })
   materialId: number;
@@ -68,6 +73,13 @@ export class MaterialIssuing {
   @JoinColumn({ name: 'material_id' })
   material: Material;
 
+  @ManyToOne(() => IssuingType)
+  @JoinColumn({ name: 'issuing_type_id' })
+  issuingTypeMaster: IssuingType;
+
   @OneToMany(() => MaterialIssuingLot, lot => lot.issuing)
   lots: MaterialIssuingLot[];
+
+  @OneToMany(() => MaterialIssuingDocument, doc => doc.issuing)
+  documents: MaterialIssuingDocument[];
 }

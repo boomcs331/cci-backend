@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsBoolean, IsNumber, IsArray, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class CreateProductDto {
   @IsString()
@@ -13,12 +13,24 @@ export class CreateProductDto {
   description?: string;
 
   @IsOptional()
-  @IsString()
-  unit?: string;
+  @IsNumber()
+  productTypeId?: number;
 
   @IsOptional()
   @IsNumber()
   defaultLocationId?: number;
+
+  @IsOptional()
+  @IsString()
+  lr?: string;
+
+  @IsOptional()
+  @IsNumber()
+  lotSize?: number;
+
+  @IsOptional()
+  @IsNumber()
+  minStock?: number;
 
   @IsOptional()
   @IsNumber()
@@ -26,7 +38,27 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsNumber()
-  safetyStock?: number;
+  modelId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  deliveryTypeId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  unitId?: number;
+
+  @IsOptional()
+  @IsString()
+  scale?: string;
+
+  @IsOptional()
+  @IsNumber()
+  loadingPointId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  processLineId?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -36,6 +68,10 @@ export class CreateProductDto {
 export class UpdateProductDto {
   @IsOptional()
   @IsString()
+  productCode?: string;
+
+  @IsOptional()
+  @IsString()
   productName?: string;
 
   @IsOptional()
@@ -43,20 +79,62 @@ export class UpdateProductDto {
   description?: string;
 
   @IsOptional()
-  @IsString()
-  unit?: string;
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @IsNumber()
+  productTypeId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   @IsNumber()
   defaultLocationId?: number;
 
   @IsOptional()
+  @IsString()
+  lr?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @IsNumber()
+  lotSize?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @IsNumber()
+  minStock?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   @IsNumber()
   customerId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   @IsNumber()
-  safetyStock?: number;
+  modelId?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @IsNumber()
+  deliveryTypeId?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @IsNumber()
+  unitId?: number;
+
+  @IsOptional()
+  @IsString()
+  scale?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @IsNumber()
+  loadingPointId?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @IsNumber()
+  processLineId?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -64,9 +142,11 @@ export class UpdateProductDto {
 }
 
 export class CreateBomDto {
+  @Transform(({ value }) => parseInt(value))
   @IsNumber()
   materialId: number;
 
+  @Transform(({ value }) => parseFloat(value))
   @IsNumber()
   quantityPerUnit: number;
 
@@ -75,6 +155,11 @@ export class CreateBomDto {
   unit?: string;
 
   @IsOptional()
+  @IsString()
+  remarks?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   @IsNumber()
   sequenceOrder?: number;
 }

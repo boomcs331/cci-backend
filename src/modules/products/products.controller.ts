@@ -1,28 +1,31 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { ProductsService } from './products.service';
-import { CreateProductWithBomDto, UpdateProductDto, CreateBomDto } from './dto/product.dto';
+import { CreateProductDto, CreateProductWithBomDto, UpdateProductDto, CreateBomDto } from './dto/product.dto';
 import { ResponseHelper } from '@app/common';
 
 @Controller('products')
 export class ProductsController {
   constructor(private readonly service: ProductsService) {}
 
+  @Post()
+  async create(@Body() dto: CreateProductWithBomDto) {
+    const product = await this.service.create(dto, 'admin');
+    return ResponseHelper.success(product, 'Product created successfully');
+  }
+
+  @Post('with-bom')
+  async createWithBom(@Body() dto: CreateProductWithBomDto) {
+    console.log('📦 POST /products/with-bom - Received DTO:', JSON.stringify(dto, null, 2));
+    console.log('📋 BOM items count:', dto.bom?.length || 0);
+    const product = await this.service.create(dto, 'admin');
+    console.log('✅ Product with BOM created successfully:', { id: product.id, productCode: product.productCode, bomCount: product.boms?.length || 0 });
+    return ResponseHelper.success(product, 'Product with BOM created successfully');
+  }
+
   @Get('all')
   async getAllWithoutPagination() {
     const products = await this.service.findAllWithoutPagination();
     return ResponseHelper.success(products, 'Products retrieved successfully');
-  }
-
-  @Get('locations/all')
-  async getAllLocations() {
-    const locations = await this.service.findAllLocations();
-    return ResponseHelper.success(locations, 'Product locations retrieved successfully');
-  }
-
-  @Get('customers/all')
-  async getAllCustomers() {
-    const customers = await this.service.findAllCustomers();
-    return ResponseHelper.success(customers, 'Customers retrieved successfully');
   }
 
   @Get()
@@ -42,25 +45,19 @@ export class ProductsController {
     return ResponseHelper.paginated(result.products, result.page, result.limit, result.total, 'Products retrieved successfully');
   }
 
-  @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    const product = await this.service.findOne(id);
-    return ResponseHelper.success(product, 'Product retrieved successfully');
-  }
-
   @Get('code/:code')
   async findByCode(@Param('code') code: string) {
     const product = await this.service.findByCode(code);
     return ResponseHelper.success(product, 'Product retrieved successfully');
   }
 
-  @Post()
-  async create(@Body() dto: CreateProductWithBomDto) {
-    const product = await this.service.create(dto, 'admin');
-    return ResponseHelper.success(product, 'Product created successfully');
+  @Get(':id')
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    const product = await this.service.findOne(id);
+    return ResponseHelper.success(product, 'Product retrieved successfully');
   }
 
-  @Put(':id')
+  @Patch(':id')
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductDto) {
     const product = await this.service.update(id, dto, 'admin');
     return ResponseHelper.success(product, 'Product updated successfully');
@@ -79,41 +76,30 @@ export class ProductsController {
   }
 
   @Post(':id/bom')
-  async addBomItems(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
-    console.log('Received body:', JSON.stringify(body));
-    
-    // Extract items from body.boms if it exists, otherwise use body directly
-    let items = body.boms || body;
-    items = Array.isArray(items) ? items : [items];
-    console.log('Processed items:', JSON.stringify(items));
-    
-    // Convert string numbers to actual numbers
-    const validItems = items
-      .filter(item => item && item.materialId && item.quantityPerUnit)
-      .map(item => ({
-        materialId: parseInt(item.materialId),
-        quantityPerUnit: parseFloat(item.quantityPerUnit),
-        unit: item.unit,
-        sequenceOrder: item.sequenceOrder ? parseInt(item.sequenceOrder) : undefined
-      }));
-    
-    if (validItems.length === 0) {
-      return ResponseHelper.success([], 'No valid BOM items to add');
-    }
-    
-    const bom = await this.service.addBomItems(id, validItems, 'admin');
+  async addBomItems(@Param('id', ParseIntPipe) id: number, @Body() body: CreateBomDto | { items: CreateBomDto[] }) {
+    console.log('📦 POST /products/:id/bom - Body:', JSON.stringify(body, null, 2));
+    const items = Array.isArray((body as any).items) ? (body as any).items : [body];
+    const bom = await this.service.addBomItems(id, items, 'admin');
     return ResponseHelper.success(bom, 'BOM items added successfully');
   }
 
-  @Delete('bom/:bomId')
-  async removeBomItem(@Param('bomId', ParseIntPipe) bomId: number) {
+  @Patch(':id/bom')
+  async updateBom(@Param('id', ParseIntPipe) id: number, @Body() body: CreateBomDto[] | { items: CreateBomDto[] }) {
+    console.log('📦 PATCH /products/:id/bom - Body:', JSON.stringify(body, null, 2));
+    const items = Array.isArray((body as any).items) ? (body as any).items : Array.isArray(body) ? body : [body];
+    const bom = await this.service.updateBom(id, items, 'admin');
+    return ResponseHelper.success(bom, 'BOM updated successfully');
+  }
+
+  @Delete(':id/bom/:bomId')
+  async removeBomItem(@Param('id', ParseIntPipe) productId: number, @Param('bomId', ParseIntPipe) bomId: number) {
     await this.service.removeBomItem(bomId);
     return ResponseHelper.success(null, 'BOM item removed successfully');
   }
 
-  @Get(':id/calculate')
+  @Get(':id/material-requirements')
   async calculateRequirements(@Param('id', ParseIntPipe) id: number, @Query('quantity') quantity: string) {
-    const requirements = await this.service.calculateMaterialRequirements(+id, +quantity);
+    const requirements = await this.service.calculateMaterialRequirements(id, +quantity);
     return ResponseHelper.success(requirements, 'Material requirements calculated successfully');
   }
 }

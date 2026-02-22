@@ -1,605 +1,473 @@
-# API Documentation - CPS v1 Backend
+# API Documentation - Materials Receiving & Issuing
 
 ## Base URL
 ```
-http://localhost:3000
-```
-
-## 📋 สารบัญ
-- [System Health](#system-health)
-- [Authentication & Authorization](#authentication--authorization)
-- [Materials Management](#materials-management)
-- [Master Data](#master-data)
-- [Products Management](#products-management)
-- [Material Transactions](#material-transactions)
-
----
-
-## 🏥 System Health
-
-### GET `/`
-**คำอธิบาย:** ตรวจสอบสถานะระบบพื้นฐาน
-```json
-{
-  "message": "Hello World!"
-}
-```
-
-### GET `/health`
-**คำอธิบาย:** ตรวจสอบสุขภาพระบบ
-```json
-{
-  "status": "ok",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
+/materials/transactions
 ```
 
 ---
 
-## 🔐 Authentication & Authorization
+## Endpoints
 
-### 👤 User Management
+### 1. รับวัสดุเข้าคลัง (Receive Material)
+**POST** `/materials/transactions/receive`
 
-#### POST `/auth/register`
-**คำอธิบาย:** สมัครสมาชิกใหม่
-**Body:**
+รับวัสดุเข้าคลังพร้อมสร้าง Lot และ QR Code
+
+#### Request Body
 ```json
 {
-  "username": "string",
-  "email": "string",
-  "password": "string"
+  "materialId": 1,
+  "quantity": 100,
+  "unit": "kg",
+  "supplierId": 5,
+  "receivedDate": "2024-01-15T10:30:00Z",
+  "lotNumber": "LOT-2024-001",
+  "expiryDate": "2025-01-15T00:00:00Z",
+  "locationId": 3,
+  "remarks": "รับวัสดุจากซัพพลายเออร์"
 }
 ```
 
-#### POST `/auth/login`
-**คำอธิบาย:** เข้าสู่ระบบ
-**Body:**
-```json
-z
-```
-
-#### GET `/auth/users`
-**คำอธิบาย:** ดูรายการผู้ใช้ทั้งหมด
-
-#### GET `/auth/users/:id`
-**คำอธิบาย:** ดูข้อมูลผู้ใช้ตาม ID
-
-#### PUT `/auth/users/:id`
-**คำอธิบาย:** แก้ไขข้อมูลผู้ใช้
-
-#### DELETE `/auth/users/:id`
-**คำอธิบาย:** ลบผู้ใช้
-
-#### PATCH `/auth/users/:id/toggle-status`
-**คำอธิบาย:** เปลี่ยนสถานะผู้ใช้ (เปิด/ปิด)
-
-#### GET `/auth/users/:id/permissions`
-**คำอธิบาย:** ดูสิทธิ์ของผู้ใช้
-
-#### GET `/auth/profile/:id`
-**คำอธิบาย:** ดูโปรไฟล์ผู้ใช้
-
-### 🎭 Role Management
-
-#### POST `/auth/roles`
-**คำอธิบาย:** สร้างบทบาทใหม่
-**Body:**
+#### Response
 ```json
 {
-  "name": "string",
-  "code": "string",
-  "description": "string"
+  "success": true,
+  "message": "Material received successfully",
+  "data": {
+    "id": 1,
+    "materialId": 1,
+    "quantity": 100,
+    "qrCode": "QR-2024-001-ABC123",
+    "lotNumber": "LOT-2024-001",
+    "receivedDate": "2024-01-15T10:30:00Z"
+  }
 }
 ```
-
-#### POST `/auth/roles-with-permissions`
-**คำอธิบาย:** สร้างบทบาทพร้อมสิทธิ์
-
-#### GET `/auth/roles`
-**คำอธิบาย:** ดูรายการบทบาททั้งหมด
-
-#### GET `/auth/roles/:id`
-**คำอธิบาย:** ดูข้อมูลบทบาทตาม ID
-
-#### PUT `/auth/roles/:id`
-**คำอธิบาย:** แก้ไขข้อมูลบทบาท
-
-#### DELETE `/auth/roles/:id`
-**คำอธิบาย:** ลบบทบาท
-
-#### PATCH `/auth/roles/:id/toggle-status`
-**คำอธิบาย:** เปลี่ยนสถานะบทบาท
-
-#### GET `/auth/roles/:id/users`
-**คำอธิบาย:** ดูผู้ใช้ที่มีบทบาทนี้
-
-### 🔑 Permission Management
-
-#### POST `/auth/permissions`
-**คำอธิบาย:** สร้างสิทธิ์ใหม่
-**Body:**
-```json
-{
-  "name": "string",
-  "code": "string",
-  "module": "string",
-  "description": "string"
-}
-```
-
-#### GET `/auth/permissions`
-**คำอธิบาย:** ดูรายการสิทธิ์ทั้งหมด
-
-#### GET `/auth/permissions/:id`
-**คำอธิบาย:** ดูข้อมูลสิทธิ์ตาม ID
-
-#### PUT `/auth/permissions/:id`
-**คำอธิบาย:** แก้ไขข้อมูลสิทธิ์
-
-#### DELETE `/auth/permissions/:id`
-**คำอธิบาย:** ลบสิทธิ์
-
-#### GET `/auth/permissions/:id/roles`
-**คำอธิบาย:** ดูบทบาทที่มีสิทธิ์นี้
-
-#### GET `/auth/permissions/modules/:module`
-**คำอธิบาย:** ดูสิทธิ์ตามโมดูล
-
-#### GET `/auth/modules`
-**คำอธิบาย:** ดูรายการโมดูลทั้งหมด
-
-### 🔗 Role-Permission Relations
-
-#### PUT `/auth/roles/:id/permissions`
-**คำอธิบาย:** กำหนดสิทธิ์ให้บทบาท
-**Body:**
-```json
-{
-  "permissionIds": ["string"]
-}
-```
-
-#### POST `/auth/roles/:roleId/permissions/:permissionId`
-**คำอธิบาย:** เพิ่มสิทธิ์ให้บทบาท
-
-#### DELETE `/auth/roles/:roleId/permissions/:permissionId`
-**คำอธิบาย:** ลบสิทธิ์ออกจากบทบาท
-
-### 👥 User-Role Relations
-
-#### PUT `/auth/users/:id/roles`
-**คำอธิบาย:** กำหนดบทบาทให้ผู้ใช้
-**Body:**
-```json
-{
-  "roleIds": ["string"]
-}
-```
-
-#### POST `/auth/users/:userId/roles/:roleId`
-**คำอธิบาย:** เพิ่มบทบาทให้ผู้ใช้
-
-#### DELETE `/auth/users/:userId/roles/:roleId`
-**คำอธิบาย:** ลบบทบาทออกจากผู้ใช้
-
-### 📊 Audit Logs
-
-#### GET `/auth/audit/recent-logins`
-**คำอธิบาย:** ดูประวัติการเข้าสู่ระบบล่าสุด
-
-#### GET `/auth/audit/failed-logins`
-**คำอธิบาย:** ดูประวัติการเข้าสู่ระบบที่ล้มเหลว
-
-#### GET `/auth/audit/login-statistics`
-**คำอธิบาย:** ดูสถิติการเข้าสู่ระบบ
-**Query Parameters:**
-- `timeWindow`: ช่วงเวลา (นาที)
 
 ---
 
-## 📦 Materials Management
+### 2. เบิกวัสดุพร้อมเอกสาร (Issue Material with Document)
+**POST** `/materials/transactions/issue-with-document`
 
-### 🧱 Materials
+เบิกวัสดุออกจากคลังพร้อมระบุเอกสารอ้างอิง
 
-#### POST `/materials`
-**คำอธิบาย:** สร้างวัสดุใหม่
-**Body:**
+#### Request Body
 ```json
 {
-  "matName": "string",
-  "matCode": "string",
-  "unit": "string",
-  "locationId": "number"
+  "qrCode": "QR-2024-001-ABC123",
+  "quantity": 50,
+  "department": "Production",
+  "issuedDate": "2024-01-20T14:00:00Z",
+  "documentType": "WORK_ORDER",
+  "documentNumber": "WO-2024-001",
+  "remarks": "เบิกวัสดุสำหรับใบสั่งผลิต"
 }
 ```
 
-#### GET `/materials`
-**คำอธิบาย:** ดูรายการวัสดุแบบแบ่งหน้า
-**Query Parameters:**
-- `page`: หน้า (default: 1)
-- `limit`: จำนวนต่อหน้า (default: 10)
-- `search`: คำค้นหา
-- `sortBy`: เรียงตาม (default: id)
-- `sortOrder`: ลำดับ (ASC/DESC)
-- `locationId`: ID สถานที่
-- `unit`: หน่วย
-- `isActive`: สถานะ (true/false)
-
-#### GET `/materials/all`
-**คำอธิบาย:** ดูรายการวัสดุทั้งหมด (ไม่แบ่งหน้า)
-
-#### GET `/materials/:id`
-**คำอธิบาย:** ดูข้อมูลวัสดุตาม ID
-
-#### PATCH `/materials/:id`
-**คำอธิบาย:** แก้ไขข้อมูลวัสดุ
-
-#### DELETE `/materials/:id`
-**คำอธิบาย:** ลบวัสดุ
-
-### 📍 Material Types & Locations
-
-#### POST `/materials/types`
-**คำอธิบาย:** สร้างประเภทวัสดุใหม่
-
-#### GET `/materials/types/all`
-**คำอธิบาย:** ดูรายการประเภทวัสดุทั้งหมด
-
-#### POST `/materials/locations`
-**คำอธิบาย:** สร้างสถานที่เก็บวัสดุใหม่
-
-#### GET `/materials/locations/all`
-**คำอธิบาย:** ดูรายการสถานที่เก็บวัสดุทั้งหมด
-
-### 📈 Stock Management
-
-#### POST `/materials/stock/receive`
-**คำอธิบาย:** รับวัสดุเข้าสต็อก
-**Body:**
+#### Response
 ```json
 {
-  "materialId": "number",
-  "quantity": "number",
-  "unit": "string"
+  "success": true,
+  "message": "Material issued with documents successfully",
+  "data": {
+    "id": 1,
+    "qrCode": "QR-2024-001-ABC123",
+    "quantity": 50,
+    "department": "Production",
+    "documentType": "WORK_ORDER",
+    "documentNumber": "WO-2024-001",
+    "issuedDate": "2024-01-20T14:00:00Z"
+  }
 }
 ```
-
-#### POST `/materials/stock/issue`
-**คำอธิบาย:** เบิกวัสดุออกจากสต็อก
-
-### 🏢 Suppliers
-
-#### POST `/materials/suppliers`
-**คำอธิบาย:** สร้างผู้จำหน่ายใหม่
-**Body:**
-```json
-{
-  "name": "string",
-  "code": "string",
-  "contact": "string"
-}
-```
-
-#### GET `/materials/suppliers/all`
-**คำอธิบาย:** ดูรายการผู้จำหน่ายทั้งหมด
-
-#### GET `/materials/suppliers/:id`
-**คำอธิบาย:** ดูข้อมูลผู้จำหน่ายตาม ID
-
-#### PUT `/materials/suppliers/:id`
-**คำอธิบาย:** แก้ไขข้อมูลผู้จำหน่าย
-
-#### DELETE `/materials/suppliers/:id`
-**คำอธิบาย:** ลบผู้จำหน่าย
 
 ---
 
-## 🎯 Master Data
+### 3. เบิกวัสดุตาม BOM (Issue Material from BOM)
+**POST** `/materials/transactions/issue-from-bom`
 
-### 🏷️ Models
+เบิกวัสดุตามสูตรการผลิต (Bill of Materials)
 
-#### POST `/masters/models`
-**คำอธิบาย:** สร้างโมเดลใหม่
-**Body:**
+#### Request Body
 ```json
 {
-  "name": "string",
-  "code": "string",
-  "description": "string"
+  "productId": 10,
+  "quantity": 5,
+  "workOrderNumber": "WO-2024-001",
+  "department": "Production",
+  "issuedDate": "2024-01-20T14:00:00Z",
+  "remarks": "เบิกวัสดุสำหรับผลิตสินค้า 5 ชิ้น"
 }
 ```
 
-#### GET `/masters/models`
-**คำอธิบาย:** ดูรายการโมเดลทั้งหมด
-
-#### GET `/masters/models/:id`
-**คำอธิบาย:** ดูข้อมูลโมเดลตาม ID
-
-#### PUT `/masters/models/:id`
-**คำอธิบาย:** แก้ไขข้อมูลโมเดล
-
-#### DELETE `/masters/models/:id`
-**คำอธิบาย:** ลบโมเดล
-
-### 🚚 Delivery Types
-
-#### POST `/masters/delivery-types`
-**คำอธิบาย:** สร้างประเภทการส่งใหม่
-
-#### GET `/masters/delivery-types`
-**คำอธิบาย:** ดูรายการประเภทการส่งทั้งหมด
-
-#### GET `/masters/delivery-types/:id`
-**คำอธิบาย:** ดูข้อมูลประเภทการส่งตาม ID
-
-#### PUT `/masters/delivery-types/:id`
-**คำอธิบาย:** แก้ไขข้อมูลประเภทการส่ง
-
-#### DELETE `/masters/delivery-types/:id`
-**คำอธิบาย:** ลบประเภทการส่ง
-
-### 📏 Units
-
-#### POST `/masters/units`
-**คำอธิบาย:** สร้างหน่วยใหม่
-
-#### GET `/masters/units`
-**คำอธิบาย:** ดูรายการหน่วยทั้งหมด
-
-#### GET `/masters/units/:id`
-**คำอธิบาย:** ดูข้อมูลหน่วยตาม ID
-
-#### PUT `/masters/units/:id`
-**คำอธิบาย:** แก้ไขข้อมูลหน่วย
-
-#### DELETE `/masters/units/:id`
-**คำอธิบาย:** ลบหน่วย
-
-### 📍 Loading Points
-
-#### POST `/masters/loading-points`
-**คำอธิบาย:** สร้างจุดขนถ่ายใหม่
-
-#### GET `/masters/loading-points`
-**คำอธิบาย:** ดูรายการจุดขนถ่ายทั้งหมด
-
-#### GET `/masters/loading-points/:id`
-**คำอธิบาย:** ดูข้อมูลจุดขนถ่ายตาม ID
-
-#### PUT `/masters/loading-points/:id`
-**คำอธิบาย:** แก้ไขข้อมูลจุดขนถ่าย
-
-#### DELETE `/masters/loading-points/:id`
-**คำอธิบาย:** ลบจุดขนถ่าย
-
-### ⚙️ Process Lines
-
-#### POST `/masters/process-lines`
-**คำอธิบาย:** สร้างสายการผลิตใหม่
-
-#### GET `/masters/process-lines`
-**คำอธิบาย:** ดูรายการสายการผลิตทั้งหมด
-
-#### GET `/masters/process-lines/:id`
-**คำอธิบาย:** ดูข้อมูลสายการผลิตตาม ID
-
-#### PUT `/masters/process-lines/:id`
-**คำอธิบาย:** แก้ไขข้อมูลสายการผลิต
-
-#### DELETE `/masters/process-lines/:id`
-**คำอธิบาย:** ลบสายการผลิต
-
----
-
-## 🏭 Products Management
-
-### 📦 Products
-
-#### POST `/products`
-**คำอธิบาย:** สร้างผลิตภัณฑ์ใหม่
-**Body:**
+#### Response
 ```json
 {
-  "productName": "string",
-  "productCode": "string",
-  "description": "string"
-}
-```
-
-#### GET `/products`
-**คำอธิบาย:** ดูรายการผลิตภัณฑ์แบบแบ่งหน้า
-**Query Parameters:**
-- `page`: หน้า (default: 1)
-- `limit`: จำนวนต่อหน้า (default: 10)
-- `search`: คำค้นหา
-- `sortBy`: เรียงตาม (default: id)
-- `sortOrder`: ลำดับ (ASC/DESC)
-- `isActive`: สถานะ (true/false)
-
-#### GET `/products/all`
-**คำอธิบาย:** ดูรายการผลิตภัณฑ์ทั้งหมด (ไม่แบ่งหน้า)
-
-#### GET `/products/:id`
-**คำอธิบาย:** ดูข้อมูลผลิตภัณฑ์ตาม ID
-
-#### GET `/products/code/:code`
-**คำอธิบาย:** ดูข้อมูลผลิตภัณฑ์ตามรหัส
-
-#### PUT `/products/:id`
-**คำอธิบาย:** แก้ไขข้อมูลผลิตภัณฑ์
-
-#### DELETE `/products/:id`
-**คำอธิบาย:** ลบผลิตภัณฑ์
-
-### 📋 BOM (Bill of Materials)
-
-#### GET `/products/:id/bom`
-**คำอธิบาย:** ดูรายการวัสดุในผลิตภัณฑ์
-
-#### POST `/products/:id/bom`
-**คำอธิบาย:** เพิ่มวัสดุในผลิตภัณฑ์
-**Body:**
-```json
-{
-  "boms": [
+  "success": true,
+  "message": "Materials issued from product BOM successfully",
+  "data": [
     {
-      "materialId": "number",
-      "quantityPerUnit": "number",
-      "unit": "string",
-      "sequenceOrder": "number"
+      "materialId": 1,
+      "materialName": "Steel Sheet",
+      "quantity": 25,
+      "unit": "kg",
+      "qrCode": "QR-2024-001-ABC123"
+    },
+    {
+      "materialId": 2,
+      "materialName": "Bolt M8",
+      "quantity": 100,
+      "unit": "pcs",
+      "qrCode": "QR-2024-002-DEF456"
     }
   ]
 }
 ```
 
-#### DELETE `/products/bom/:bomId`
-**คำอธิบาย:** ลบวัสดุออกจากผลิตภัณฑ์
-
-#### GET `/products/:id/calculate`
-**คำอธิบาย:** คำนวณความต้องการวัสดุ
-**Query Parameters:**
-- `quantity`: จำนวนที่ต้องการผลิต
-
-### 🏢 Product Support Data
-
-#### GET `/products/locations/all`
-**คำอธิบาย:** ดูรายการสถานที่ผลิตภัณฑ์ทั้งหมด
-
-#### GET `/products/customers/all`
-**คำอธิบาย:** ดูรายการลูกค้าทั้งหมด
-
 ---
 
-## 🔄 Material Transactions
+### 4. ดึงรายการรับวัสดุทั้งหมด (Get All Receivings)
+**GET** `/materials/transactions/receivings`
 
-### 📥 Receiving
+ดึงรายการการรับวัสดุเข้าคลังพร้อม Pagination และ Filter
 
-#### POST `/materials/transactions/receive`
-**คำอธิบาย:** บันทึกการรับวัสดุ
-**Body:**
-```json
-{
-  "materialId": "number",
-  "quantity": "number",
-  "supplierId": "number",
-  "lotNumber": "string"
-}
+#### Query Parameters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| page | number | No | 1 | หน้าที่ต้องการ |
+| limit | number | No | 10 | จำนวนรายการต่อหน้า |
+| search | string | No | - | ค้นหาจาก lot number, material name |
+| sortBy | string | No | id | เรียงตาม (id, receivedDate, quantity) |
+| sortOrder | string | No | DESC | ASC หรือ DESC |
+| materialId | number | No | - | กรองตาม Material ID |
+| supplierId | number | No | - | กรองตาม Supplier ID |
+| status | string | No | - | กรองตามสถานะ (ACTIVE, DEPLETED) |
+
+#### Example Request
+```
+GET /materials/transactions/receivings?page=1&limit=20&materialId=5&status=ACTIVE
 ```
 
-#### GET `/materials/transactions/receivings`
-**คำอธิบาย:** ดูรายการการรับวัสดุ
-**Query Parameters:**
-- `page`: หน้า (default: 1)
-- `limit`: จำนวนต่อหน้า (default: 10)
-- `search`: คำค้นหา
-- `sortBy`: เรียงตาม (default: id)
-- `sortOrder`: ลำดับ (default: DESC)
-- `materialId`: ID วัสดุ
-- `supplierId`: ID ผู้จำหน่าย
-- `status`: สถานะ
-
-### 📤 Issuing
-
-#### POST `/materials/transactions/issue`
-**คำอธิบาย:** บันทึกการเบิกวัสดุ
-**Body:**
-```json
-{
-  "materialId": "number",
-  "quantity": "number",
-  "department": "string",
-  "issuingType": "string"
-}
-```
-
-#### GET `/materials/transactions/issuings`
-**คำอธิบาย:** ดูรายการการเบิกวัสดุ
-**Query Parameters:**
-- `page`: หน้า (default: 1)
-- `limit`: จำนวนต่อหน้า (default: 10)
-- `search`: คำค้นหา
-- `sortBy`: เรียงตาม (default: id)
-- `sortOrder`: ลำดับ (default: DESC)
-- `materialId`: ID วัสดุ
-- `department`: แผนก
-- `status`: สถานะ
-- `issuingType`: ประเภทการเบิก
-
-### 📱 QR Code & Lot Management
-
-#### GET `/materials/transactions/qr/:qrCode`
-**คำอธิบาย:** ดูข้อมูล Lot จาก QR Code
-
-#### GET `/materials/transactions/qr/:qrCode/transactions`
-**คำอธิบาย:** ดูประวัติการทำรายการของ Lot
-
-#### GET `/materials/transactions/lots`
-**คำอธิบาย:** ดูรายการ Lot ทั้งหมด
-**Query Parameters:**
-- `page`: หน้า (default: 1)
-- `limit`: จำนวนต่อหน้า (default: 10)
-- `materialId`: ID วัสดุ
-- `status`: สถานะ
-- `locationId`: ID สถานที่
-
----
-
-## 📝 Response Format
-
-### Success Response
+#### Response
 ```json
 {
   "success": true,
-  "message": "Operation completed successfully",
-  "data": {},
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
-```
-
-### Paginated Response
-```json
-{
-  "success": true,
-  "message": "Data retrieved successfully",
-  "data": [],
+  "message": "Receivings retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "materialId": 5,
+      "materialName": "Steel Sheet",
+      "quantity": 100,
+      "lotNumber": "LOT-2024-001",
+      "qrCode": "QR-2024-001-ABC123",
+      "supplierName": "ABC Steel Co.",
+      "receivedDate": "2024-01-15T10:30:00Z",
+      "status": "ACTIVE"
+    }
+  ],
   "pagination": {
     "page": 1,
-    "limit": 10,
-    "total": 100,
-    "totalPages": 10
-  },
-  "timestamp": "2024-01-01T00:00:00.000Z"
+    "limit": 20,
+    "total": 45,
+    "totalPages": 3
+  }
 }
 ```
 
-### Error Response
+---
+
+### 5. ดึงรายการเบิกวัสดุทั้งหมด (Get All Issuings)
+**GET** `/materials/transactions/issuings`
+
+ดึงรายการการเบิกวัสดุออกจากคลังพร้อม Pagination และ Filter
+
+#### Query Parameters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| page | number | No | 1 | หน้าที่ต้องการ |
+| limit | number | No | 10 | จำนวนรายการต่อหน้า |
+| search | string | No | - | ค้นหาจาก document number, material name |
+| sortBy | string | No | id | เรียงตาม (id, issuedDate, quantity) |
+| sortOrder | string | No | DESC | ASC หรือ DESC |
+| materialId | number | No | - | กรองตาม Material ID |
+| department | string | No | - | กรองตามแผนก |
+| status | string | No | - | กรองตามสถานะ |
+| issuingType | string | No | - | กรองตามประเภทการเบิก |
+
+#### Example Request
+```
+GET /materials/transactions/issuings?page=1&limit=20&department=Production&issuingType=WORK_ORDER
+```
+
+#### Response
+```json
+{
+  "success": true,
+  "message": "Issuings retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "materialId": 5,
+      "materialName": "Steel Sheet",
+      "quantity": 50,
+      "qrCode": "QR-2024-001-ABC123",
+      "department": "Production",
+      "documentType": "WORK_ORDER",
+      "documentNumber": "WO-2024-001",
+      "issuedDate": "2024-01-20T14:00:00Z",
+      "issuingType": "WORK_ORDER"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 78,
+    "totalPages": 4
+  }
+}
+```
+
+---
+
+### 6. ดึงข้อมูล Lot จาก QR Code
+**GET** `/materials/transactions/qr/:qrCode`
+
+ดึงข้อมูล Lot และวัสดุจาก QR Code
+
+#### Example Request
+```
+GET /materials/transactions/qr/QR-2024-001-ABC123
+```
+
+#### Response
+```json
+{
+  "success": true,
+  "message": "Lot retrieved successfully",
+  "data": {
+    "id": 1,
+    "qrCode": "QR-2024-001-ABC123",
+    "lotNumber": "LOT-2024-001",
+    "materialId": 5,
+    "materialName": "Steel Sheet",
+    "materialCode": "MAT-001",
+    "currentQuantity": 50,
+    "originalQuantity": 100,
+    "unit": "kg",
+    "locationId": 3,
+    "locationName": "Warehouse A - Rack 1",
+    "expiryDate": "2025-01-15T00:00:00Z",
+    "status": "ACTIVE",
+    "receivedDate": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+---
+
+### 7. ดึงประวัติการทำรายการของ Lot
+**GET** `/materials/transactions/qr/:qrCode/transactions`
+
+ดึงประวัติการรับ-เบิกวัสดุของ Lot นั้นๆ
+
+#### Example Request
+```
+GET /materials/transactions/qr/QR-2024-001-ABC123/transactions
+```
+
+#### Response
+```json
+{
+  "success": true,
+  "message": "Transactions retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "type": "RECEIVING",
+      "quantity": 100,
+      "date": "2024-01-15T10:30:00Z",
+      "remarks": "รับวัสดุจากซัพพลายเออร์",
+      "supplierName": "ABC Steel Co."
+    },
+    {
+      "id": 2,
+      "type": "ISSUING",
+      "quantity": 50,
+      "date": "2024-01-20T14:00:00Z",
+      "department": "Production",
+      "documentNumber": "WO-2024-001",
+      "remarks": "เบิกวัสดุสำหรับใบสั่งผลิต"
+    }
+  ]
+}
+```
+
+---
+
+### 8. ดึงรายการ Lot ทั้งหมด
+**GET** `/materials/transactions/lots`
+
+ดึงรายการ Lot ทั้งหมดพร้อม Pagination และ Filter
+
+#### Query Parameters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| page | number | No | 1 | หน้าที่ต้องการ |
+| limit | number | No | 10 | จำนวนรายการต่อหน้า |
+| materialId | number | No | - | กรองตาม Material ID |
+| status | string | No | - | กรองตามสถานะ (ACTIVE, DEPLETED, EXPIRED) |
+| locationId | number | No | - | กรองตามตำแหน่งจัดเก็บ |
+
+#### Example Request
+```
+GET /materials/transactions/lots?page=1&limit=20&status=ACTIVE&locationId=3
+```
+
+#### Response
+```json
+{
+  "success": true,
+  "message": "Lots retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "qrCode": "QR-2024-001-ABC123",
+      "lotNumber": "LOT-2024-001",
+      "materialName": "Steel Sheet",
+      "currentQuantity": 50,
+      "unit": "kg",
+      "locationName": "Warehouse A - Rack 1",
+      "expiryDate": "2025-01-15T00:00:00Z",
+      "status": "ACTIVE"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 120,
+    "totalPages": 6
+  }
+}
+```
+
+---
+
+### 9. ดึงประเภทการเบิกทั้งหมด
+**GET** `/materials/transactions/issuing-types`
+
+ดึงรายการประเภทการเบิกวัสดุทั้งหมด
+
+#### Response
+```json
+{
+  "success": true,
+  "message": "Issuing types retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "code": "WORK_ORDER",
+      "name": "ใบสั่งผลิต",
+      "description": "เบิกวัสดุสำหรับการผลิต"
+    },
+    {
+      "id": 2,
+      "code": "MAINTENANCE",
+      "name": "ซ่อมบำรุง",
+      "description": "เบิกวัสดุสำหรับการซ่อมบำรุง"
+    },
+    {
+      "id": 3,
+      "code": "GENERAL",
+      "name": "ทั่วไป",
+      "description": "เบิกวัสดุทั่วไป"
+    }
+  ]
+}
+```
+
+---
+
+### 10. ดึงประเภทการเบิกตาม ID
+**GET** `/materials/transactions/issuing-types/:id`
+
+ดึงข้อมูลประเภทการเบิกวัสดุตาม ID
+
+#### Example Request
+```
+GET /materials/transactions/issuing-types/1
+```
+
+#### Response
+```json
+{
+  "success": true,
+  "message": "Issuing type retrieved successfully",
+  "data": {
+    "id": 1,
+    "code": "WORK_ORDER",
+    "name": "ใบสั่งผลิต",
+    "description": "เบิกวัสดุสำหรับการผลิต",
+    "isActive": true,
+    "createdAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+---
+
+## Error Responses
+
+### 400 Bad Request
 ```json
 {
   "success": false,
-  "message": "Error message",
-  "error": "Detailed error information",
-  "timestamp": "2024-01-01T00:00:00.000Z"
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "quantity",
+      "message": "Quantity must be greater than 0"
+    }
+  ]
+}
+```
+
+### 404 Not Found
+```json
+{
+  "success": false,
+  "message": "Material not found"
+}
+```
+
+### 500 Internal Server Error
+```json
+{
+  "success": false,
+  "message": "Internal server error",
+  "error": "Error details..."
 }
 ```
 
 ---
 
-## 🔧 Common Query Parameters
+## Status Codes
 
-- `page`: หมายเลขหน้า (เริ่มจาก 1)
-- `limit`: จำนวนรายการต่อหน้า
-- `search`: คำค้นหา
-- `sortBy`: ฟิลด์ที่ใช้เรียงลำดับ
-- `sortOrder`: ลำดับการเรียง (ASC/DESC)
-- `isActive`: กรองตามสถานะ (true/false)
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 201 | Created |
+| 400 | Bad Request - Invalid input |
+| 404 | Not Found - Resource not found |
+| 500 | Internal Server Error |
 
-## 📊 HTTP Status Codes
+---
 
-- `200`: OK - สำเร็จ
-- `201`: Created - สร้างสำเร็จ
-- `204`: No Content - ลบสำเร็จ
-- `400`: Bad Request - ข้อมูลไม่ถูกต้อง
-- `401`: Unauthorized - ไม่มีสิทธิ์เข้าถึง
-- `404`: Not Found - ไม่พบข้อมูล
-- `409`: Conflict - ข้อมูลซ้ำ
-- `500`: Internal Server Error - ข้อผิดพลาดของเซิร์ฟเวอร์
+## Notes
+
+- ทุก endpoint ใช้ ResponseHelper สำหรับ format response ที่สม่ำเสมอ
+- วันที่และเวลาใช้ ISO 8601 format (YYYY-MM-DDTHH:mm:ssZ)
+- Pagination เริ่มต้นที่หน้า 1
+- QR Code จะถูกสร้างอัตโนมัติเมื่อรับวัสดุเข้าคลัง
+- การเบิกวัสดุจะตรวจสอบ stock ก่อนทำรายการ

@@ -19,6 +19,9 @@ export class ProductBom {
   @Column({ length: 50, nullable: true })
   unit: string;
 
+  @Column({ type: 'text', nullable: true })
+  remarks: string;
+
   @Column({ name: 'sequence_order', nullable: true })
   sequenceOrder: number;
 

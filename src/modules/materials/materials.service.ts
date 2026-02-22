@@ -106,12 +106,12 @@ export class MaterialsService {
     }
 
     if (unit) {
-      queryBuilder.andWhere('material.unit ILIKE :unit', { unit: `%${unit}%` });
+      queryBuilder.andWhere('unitMaster.name ILIKE :unit', { unit: `%${unit}%` });
     }
 
     if (search) {
       queryBuilder.andWhere(
-        '(material.matCode ILIKE :search OR materialsType.name ILIKE :search OR defaultLocation.name ILIKE :search OR material.unit ILIKE :search)',
+        '(material.matCode ILIKE :search OR material.matName ILIKE :search OR materialsType.name ILIKE :search OR defaultLocation.name ILIKE :search)',
         { search: `%${search}%` }
       );
     }

@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Product, ProductBom, ProductLocation, Customer } from './entities';
+import { Repository, DataSource } from 'typeorm';
+import { Product, ProductBom, ProductLocation, Customer, ProductModel, ProductType, ProductDeliveryType, ProductUnit, ProductLoadingPoint, ProductProcessLine } from './entities';
+import { Material } from '../materials/entities/material.entity';
 import { CreateProductDto, UpdateProductDto, CreateProductWithBomDto, CreateBomDto } from './dto/product.dto';
 
 @Injectable()
@@ -15,6 +16,21 @@ export class ProductsService {
     private locationRepo: Repository<ProductLocation>,
     @InjectRepository(Customer)
     private customerRepo: Repository<Customer>,
+    @InjectRepository(ProductModel)
+    private modelRepo: Repository<ProductModel>,
+    @InjectRepository(ProductType)
+    private typeRepo: Repository<ProductType>,
+    @InjectRepository(ProductDeliveryType)
+    private deliveryTypeRepo: Repository<ProductDeliveryType>,
+    @InjectRepository(ProductUnit)
+    private unitRepo: Repository<ProductUnit>,
+    @InjectRepository(ProductLoadingPoint)
+    private loadingPointRepo: Repository<ProductLoadingPoint>,
+    @InjectRepository(ProductProcessLine)
+    private processLineRepo: Repository<ProductProcessLine>,
+    @InjectRepository(Material)
+    private materialRepo: Repository<Material>,
+    private dataSource: DataSource,
   ) {}
 
   async findAllWithoutPagination() {
@@ -106,21 +122,131 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductWithBomDto, user: string) {
-    const exists = await this.productRepo.findOne({ where: { productCode: dto.productCode } });
-    if (exists) throw new ConflictException('Product code already exists');
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    const product = this.productRepo.create({
-      ...dto,
-      createBy: user,
-      updateBy: user,
-    });
-    const saved = await this.productRepo.save(product);
+    try {
+      console.log('🔍 Checking if product code exists:', dto.productCode);
+      const exists = await this.productRepo.findOne({ where: { productCode: dto.productCode } });
+      if (exists) {
+        console.log('❌ Product code already exists:', dto.productCode);
+        throw new ConflictException('Product code already exists');
+      }
 
-    if (dto.bom && Array.isArray(dto.bom) && dto.bom.length > 0) {
-      await this.addBomItems(saved.id, dto.bom, user);
+      if (dto.customerId) {
+        const customer = await this.customerRepo.findOne({ where: { id: dto.customerId } });
+        if (!customer) throw new NotFoundException(`Customer with id ${dto.customerId} not found`);
+      }
+
+      if (dto.productTypeId) {
+        const type = await this.typeRepo.findOne({ where: { id: dto.productTypeId } });
+        if (!type) throw new NotFoundException(`Product type with id ${dto.productTypeId} not found`);
+      }
+
+      if (dto.defaultLocationId) {
+        const location = await this.locationRepo.findOne({ where: { id: dto.defaultLocationId } });
+        if (!location) throw new NotFoundException(`Location with id ${dto.defaultLocationId} not found`);
+      }
+
+      if (dto.modelId) {
+        const model = await this.modelRepo.findOne({ where: { id: dto.modelId } });
+        if (!model) throw new NotFoundException(`Model with id ${dto.modelId} not found`);
+      }
+
+      if (dto.deliveryTypeId) {
+        const deliveryType = await this.deliveryTypeRepo.findOne({ where: { id: dto.deliveryTypeId } });
+        if (!deliveryType) throw new NotFoundException(`Delivery type with id ${dto.deliveryTypeId} not found`);
+      }
+
+      if (dto.unitId) {
+        const unit = await this.unitRepo.findOne({ where: { id: dto.unitId } });
+        if (!unit) throw new NotFoundException(`Unit with id ${dto.unitId} not found`);
+      }
+
+      if (dto.loadingPointId) {
+        const loadingPoint = await this.loadingPointRepo.findOne({ where: { id: dto.loadingPointId } });
+        if (!loadingPoint) throw new NotFoundException(`Loading point with id ${dto.loadingPointId} not found`);
+      }
+
+      if (dto.processLineId) {
+        const processLine = await this.processLineRepo.findOne({ where: { id: dto.processLineId } });
+        if (!processLine) throw new NotFoundException(`Process line with id ${dto.processLineId} not found`);
+      }
+
+      if (dto.bom && Array.isArray(dto.bom) && dto.bom.length > 0) {
+        console.log('🔍 Validating BOM materials...', JSON.stringify(dto.bom, null, 2));
+        for (const item of dto.bom) {
+          console.log('Checking material ID:', item.materialId);
+          const material = await this.materialRepo.findOne({ where: { id: item.materialId } });
+          if (!material) throw new NotFoundException(`Material with id ${item.materialId} not found`);
+          console.log('✅ Material found:', material.matCode);
+        }
+      }
+
+      console.log('📝 Creating product entity with data:', {
+        productCode: dto.productCode,
+        productName: dto.productName,
+        productTypeId: dto.productTypeId,
+        defaultLocationId: dto.defaultLocationId
+      });
+
+      const product = queryRunner.manager.create(Product, {
+        productCode: dto.productCode,
+        productName: dto.productName,
+        description: dto.description,
+        productTypeId: dto.productTypeId,
+        defaultLocationId: dto.defaultLocationId,
+        lr: dto.lr,
+        lotSize: dto.lotSize,
+        minStock: dto.minStock,
+        customerId: dto.customerId,
+        modelId: dto.modelId,
+        deliveryTypeId: dto.deliveryTypeId,
+        unitId: dto.unitId,
+        scale: dto.scale,
+        loadingPointId: dto.loadingPointId,
+        processLineId: dto.processLineId,
+        isActive: dto.isActive ?? true,
+        createBy: user,
+        updateBy: user,
+      });
+      
+      console.log('💾 Saving product to database...');
+      const saved = await queryRunner.manager.save(product);
+      console.log('✅ Product saved with ID:', saved.id);
+
+      if (dto.bom && Array.isArray(dto.bom) && dto.bom.length > 0) {
+        console.log('📋 Adding BOM items:', dto.bom.length);
+        console.log('BOM data:', JSON.stringify(dto.bom, null, 2));
+        const boms = dto.bom.map(item => {
+          const bomItem = queryRunner.manager.create(ProductBom, {
+            productId: saved.id,
+            materialId: item.materialId,
+            quantityPerUnit: item.quantityPerUnit,
+            unit: item.unit,
+            remarks: item.remarks,
+            sequenceOrder: item.sequenceOrder,
+            createBy: user,
+            updateBy: user,
+          });
+          console.log('Created BOM item:', bomItem);
+          return bomItem;
+        });
+        const savedBoms = await queryRunner.manager.save(ProductBom, boms);
+        console.log('✅ BOM items saved:', savedBoms.length);
+      }
+
+      await queryRunner.commitTransaction();
+      console.log('🔄 Fetching complete product data...');
+      return this.findOne(saved.id);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error('❌ Transaction rolled back:', error.message);
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    return this.findOne(saved.id);
   }
 
   async update(id: number, dto: UpdateProductDto, user: string) {
@@ -144,15 +270,88 @@ export class ProductsService {
 
   async addBomItems(productId: number, items: CreateBomDto[], user: string) {
     const product = await this.findOne(productId);
-    const boms = items.map(item =>
-      this.bomRepo.create({
-        productId: product.id,
-        ...item,
-        createBy: user,
-        updateBy: user,
-      }),
-    );
-    return this.bomRepo.save(boms);
+    
+    // Check for existing materials in BOM
+    const existingMaterialIds = product.boms.map(bom => bom.materialId);
+    
+    // Check for duplicates in request items
+    const requestMaterialIds = items.map(item => item.materialId);
+    const duplicatesInRequest = requestMaterialIds.filter((id, index) => requestMaterialIds.indexOf(id) !== index);
+    if (duplicatesInRequest.length > 0) {
+      throw new ConflictException(`Duplicate materials in request: ${duplicatesInRequest.join(', ')}`);
+    }
+    
+    for (const item of items) {
+      // Check if material already exists in BOM
+      if (existingMaterialIds.includes(item.materialId)) {
+        throw new ConflictException(`Material with id ${item.materialId} already exists in product BOM`);
+      }
+      
+      const material = await this.materialRepo.findOne({ where: { id: item.materialId } });
+      if (!material) throw new NotFoundException(`Material with id ${item.materialId} not found`);
+    }
+    
+    try {
+      const boms = items.map(item =>
+        this.bomRepo.create({
+          productId: product.id,
+          materialId: item.materialId,
+          quantityPerUnit: item.quantityPerUnit,
+          unit: item.unit,
+          remarks: item.remarks,
+          sequenceOrder: item.sequenceOrder,
+          createBy: user,
+          updateBy: user,
+        }),
+      );
+      return await this.bomRepo.save(boms);
+    } catch (error) {
+      // Handle database constraint errors
+      if (error.code === '23505') {
+        throw new ConflictException('Material already exists in product BOM');
+      }
+      throw error;
+    }
+  }
+
+  async updateBom(productId: number, items: CreateBomDto[], user: string) {
+    const product = await this.findOne(productId);
+    
+    // Check for duplicates in request items
+    const requestMaterialIds = items.map(item => item.materialId);
+    const duplicatesInRequest = requestMaterialIds.filter((id, index) => requestMaterialIds.indexOf(id) !== index);
+    if (duplicatesInRequest.length > 0) {
+      throw new ConflictException(`Duplicate materials in request: ${duplicatesInRequest.join(', ')}`);
+    }
+    
+    for (const item of items) {
+      const material = await this.materialRepo.findOne({ where: { id: item.materialId } });
+      if (!material) throw new NotFoundException(`Material with id ${item.materialId} not found`);
+    }
+    
+    try {
+      await this.bomRepo.delete({ productId });
+      
+      const boms = items.map(item =>
+        this.bomRepo.create({
+          productId: product.id,
+          materialId: item.materialId,
+          quantityPerUnit: item.quantityPerUnit,
+          unit: item.unit,
+          remarks: item.remarks,
+          sequenceOrder: item.sequenceOrder,
+          createBy: user,
+          updateBy: user,
+        }),
+      );
+      return await this.bomRepo.save(boms);
+    } catch (error) {
+      // Handle database constraint errors
+      if (error.code === '23505') {
+        throw new ConflictException('Duplicate materials in BOM');
+      }
+      throw error;
+    }
   }
 
   async removeBomItem(bomId: number) {
