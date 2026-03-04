@@ -76,4 +76,9 @@ export class ProductionPlansController {
   getMaterialAvailability() {
     return this.service.getMaterialAvailability();
   }
+
+  @Get('materials/reservations')
+  getMaterialReservations() {
+    return this.service.getMaterialReservations();
+  }
 }

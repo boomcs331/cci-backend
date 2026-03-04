@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, MoreThan } from 'typeorm';
+import { Repository, DataSource, MoreThan, In } from 'typeorm';
 import { ProductionPlan, ProductionPlanItem, MaterialReservation, PlanStatus } from './entities';
 import { Product, ProductBom } from '../products/entities';
 import { MaterialsStock } from '../materials/entities/materials-stock.entity';
@@ -56,7 +56,7 @@ export class ProductionPlansService {
   async findOne(id: number) {
     const plan = await this.planRepo.findOne({
       where: { id },
-      relations: ['items', 'items.product', 'reservations', 'reservations.material'],
+      relations: ['items', 'items.product'],
     });
 
     if (!plan) throw new NotFoundException('ไม่พบแผนการผลิต');
@@ -222,7 +222,8 @@ export class ProductionPlansService {
   }
 
   async cancel(planId: number, username: string) {
-    const plan = await this.findOne(planId);
+    const plan = await this.planRepo.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException('ไม่พบแผนการผลิต');
     
     if (plan.status === PlanStatus.CONFIRMED) {
       throw new BadRequestException('ไม่สามารถยกเลิกแผนที่ยืนยันแล้ว');
@@ -234,7 +235,9 @@ export class ProductionPlansService {
 
     try {
       if (plan.status === PlanStatus.RESERVED) {
-        for (const reservation of plan.reservations) {
+        const reservations = await queryRunner.manager.find(MaterialReservation, { where: { planId } });
+        
+        for (const reservation of reservations) {
           const stock = await queryRunner.manager.findOne(MaterialsStock, {
             where: { materialId: reservation.materialId },
             lock: { mode: 'pessimistic_write' },
@@ -269,6 +272,49 @@ export class ProductionPlansService {
       relations: ['material'],
       where: { availableQty: MoreThan(0) },
     });
+  }
+
+  async getMaterialReservations() {
+    const reservations = await this.reservationRepo
+      .createQueryBuilder('res')
+      .innerJoin('res.material', 'material')
+      .innerJoin('res.plan', 'plan')
+      .where('plan.status IN (:...statuses)', { statuses: [PlanStatus.RESERVED, PlanStatus.CONFIRMED] })
+      .select([
+        'res.materialId',
+        'res.reservedQuantity',
+        'res.lotNumber',
+        'res.receiveDate',
+        'material.id',
+        'material.matCode',
+        'material.matName',
+        'plan.planCode'
+      ])
+      .orderBy('res.materialId', 'ASC')
+      .getMany();
+
+    const grouped = reservations.reduce((acc, res) => {
+      const key = res.materialId;
+      if (!acc[key]) {
+        acc[key] = {
+          materialId: res.material.id,
+          materialCode: res.material.matCode,
+          materialName: res.material.matName,
+          totalReserved: 0,
+          details: []
+        };
+      }
+      acc[key].totalReserved += Number(res.reservedQuantity);
+      acc[key].details.push({
+        planCode: res.plan.planCode,
+        lotNumber: res.lotNumber,
+        quantity: Number(res.reservedQuantity),
+        receiveDate: res.receiveDate
+      });
+      return acc;
+    }, {});
+
+    return Object.values(grouped);
   }
 
   private async generatePlanCode(): Promise<string> {
