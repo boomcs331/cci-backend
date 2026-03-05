@@ -317,6 +317,63 @@ export class ProductionPlansService {
     return Object.values(grouped);
   }
 
+  async getPlanDetails(planId: number) {
+    const plan = await this.planRepo.findOne({
+      where: { id: planId },
+      relations: ['items', 'items.product']
+    });
+
+    if (!plan) throw new NotFoundException('ไม่พบแผนการผลิต');
+
+    const details: any[] = [];
+
+    for (const item of plan.items) {
+      const boms = await this.bomRepo.find({
+        where: { productId: item.productId, isActive: true },
+        relations: ['material'],
+        order: { sequenceOrder: 'ASC' }
+      });
+
+      const materials: any[] = [];
+      for (const bom of boms) {
+        const requiredQty = Number(bom.quantityPerUnit) * Number(item.quantity);
+        const stock = await this.stockRepo.findOne({
+          where: { materialId: bom.materialId }
+        });
+
+        materials.push({
+          materialId: bom.material.id,
+          materialCode: bom.material.matCode,
+          materialName: bom.material.matName,
+          quantityPerUnit: Number(bom.quantityPerUnit),
+          requiredQuantity: requiredQty,
+          unit: bom.unit,
+          availableQty: stock?.availableQty || 0,
+          reservedQty: stock?.reservedQty || 0,
+          totalQty: stock?.totalQty || 0
+        });
+      }
+
+      details.push({
+        productId: item.product.id,
+        productCode: item.product.productCode,
+        productName: item.product.productName,
+        quantity: Number(item.quantity),
+        unit: item.unit,
+        materials
+      });
+    }
+
+    return {
+      planId: plan.id,
+      planCode: plan.planCode,
+      planName: plan.planName,
+      planDate: plan.planDate,
+      status: plan.status,
+      items: details
+    };
+  }
+
   private async generatePlanCode(): Promise<string> {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);

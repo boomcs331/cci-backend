@@ -22,6 +22,11 @@ export class ProductionPlansController {
     return this.service.findOne(+id);
   }
 
+  @Get(':id/details')
+  getPlanDetails(@Param('id') id: string) {
+    return this.service.getPlanDetails(+id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateProductionPlanDto, @Request() req) {
     const username = req.user?.username || 'system';
