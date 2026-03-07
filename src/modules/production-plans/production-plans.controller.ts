@@ -17,14 +17,24 @@ export class ProductionPlansController {
     return this.service.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(+id);
+  @Get('materials/availability')
+  getMaterialAvailability() {
+    return this.service.getMaterialAvailability();
+  }
+
+  @Get('materials/reservations')
+  getMaterialReservations() {
+    return this.service.getMaterialReservations();
   }
 
   @Get(':id/details')
   getPlanDetails(@Param('id') id: string) {
     return this.service.getPlanDetails(+id);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(+id);
   }
 
   @Patch(':id')
@@ -71,19 +81,15 @@ export class ProductionPlansController {
     return this.service.confirm(+id, username);
   }
 
+  @Post(':id/issue')
+  issue(@Param('id') id: string, @Request() req) {
+    const username = req.user?.username || 'system';
+    return this.service.issueMaterials(+id, username);
+  }
+
   @Post(':id/cancel')
   cancel(@Param('id') id: string, @Request() req) {
     const username = req.user?.username || 'system';
     return this.service.cancel(+id, username);
-  }
-
-  @Get('materials/availability')
-  getMaterialAvailability() {
-    return this.service.getMaterialAvailability();
-  }
-
-  @Get('materials/reservations')
-  getMaterialReservations() {
-    return this.service.getMaterialReservations();
   }
 }

@@ -70,14 +70,30 @@ export class ProductionPlansService {
       throw new BadRequestException('สามารถแก้ไขได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น');
     }
 
-    Object.assign(plan, dto);
-    plan.updateBy = username;
+    Object.assign(plan, {
+      planName: dto.planName,
+      remarks: dto.remarks,
+      updateBy: username
+    });
     
     if (dto.planDate) {
       plan.planDate = new Date(dto.planDate);
     }
 
-    return this.planRepo.save(plan);
+    await this.planRepo.save(plan);
+
+    // Update items if provided
+    if (dto.items) {
+      // Delete existing items
+      await this.itemRepo.delete({ planId: id });
+      
+      // Add new items
+      for (const item of dto.items) {
+        await this.addItem(id, item);
+      }
+    }
+
+    return this.findOne(id);
   }
 
   async remove(id: number) {
@@ -156,7 +172,7 @@ export class ProductionPlansService {
     await queryRunner.startTransaction();
 
     try {
-      await this.reservationRepo.delete({ planId });
+      await queryRunner.manager.delete(MaterialReservation, { planId });
 
       const materialRequirements = new Map<number, number>();
 
@@ -165,6 +181,13 @@ export class ProductionPlansService {
           where: { productId: item.productId, isActive: true },
         });
 
+        if (!boms || boms.length === 0) {
+          const product = await this.productRepo.findOne({ where: { id: item.productId } });
+          throw new BadRequestException(
+            `สินค้า "${product?.productName || item.productId}" ยังไม่มี BOM (Bill of Materials) กรุณาเพิ่ม BOM ก่อนสร้างแผนการผลิต`
+          );
+        }
+
         for (const bom of boms) {
           const required = Number(bom.quantityPerUnit) * Number(item.quantity);
           const current = materialRequirements.get(bom.materialId) || 0;
@@ -172,26 +195,74 @@ export class ProductionPlansService {
         }
       }
 
+      // ตรวจสอบว่ามีวัตถุดิบเพียงพอทั้งหมดก่อน
       for (const [materialId, requiredQty] of materialRequirements) {
-        const stock = await queryRunner.manager.findOne(MaterialsStock, {
-          where: { materialId },
-          lock: { mode: 'pessimistic_write' },
-        });
+        const totalAvailable = await queryRunner.manager
+          .createQueryBuilder()
+          .select('COALESCE(SUM(current_quantity), 0)', 'total')
+          .from('material_lots', 'ml')
+          .where('ml.material_id = :materialId', { materialId })
+          .andWhere('ml.status = :status', { status: 'ACTIVE' })
+          .andWhere('ml.current_quantity > 0')
+          .getRawOne();
 
-        if (!stock || stock.availableQty < requiredQty) {
+        if (!totalAvailable || Number(totalAvailable.total) < requiredQty) {
+          const material = await queryRunner.manager.query(
+            'SELECT mat_name FROM materials WHERE id = $1',
+            [materialId]
+          );
           throw new BadRequestException(
-            `Material ID ${materialId} มีจำนวนไม่เพียงพอ (ต้องการ: ${requiredQty}, มีอยู่: ${stock?.availableQty || 0})`
+            `วัตถุดิบ "${material[0]?.mat_name || materialId}" มีจำนวนไม่เพียงพอ (ต้องการ: ${requiredQty}, มีอยู่: ${totalAvailable?.total || 0})`
           );
         }
+      }
 
-        await queryRunner.manager.query(
-          `INSERT INTO material_reservations (plan_id, material_id, reserved_quantity, create_date) VALUES ($1, $2, $3, NOW())`,
-          [planId, materialId, requiredQty]
+      // จองวัตถุดิบแบบ FIFO
+      for (const [materialId, requiredQty] of materialRequirements) {
+        let remainingQty = requiredQty;
+
+        const lots = await queryRunner.manager.query(
+          `SELECT id, lot_number, current_quantity, received_date 
+           FROM material_lots 
+           WHERE material_id = $1 
+           AND status = 'ACTIVE' 
+           AND current_quantity > 0 
+           ORDER BY received_date ASC, id ASC`,
+          [materialId]
         );
 
-        stock.availableQty -= requiredQty;
-        stock.reservedQty += requiredQty;
-        await queryRunner.manager.save(stock);
+        for (const lot of lots) {
+          if (remainingQty <= 0) break;
+
+          const reserveQty = Math.min(Number(lot.current_quantity), remainingQty);
+
+          await queryRunner.manager.query(
+            `INSERT INTO material_reservations 
+             (plan_id, material_id, reserved_quantity, lot_number, receive_date, create_date) 
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [planId, materialId, reserveQty, lot.lot_number, lot.received_date]
+          );
+
+          await queryRunner.manager.query(
+            `UPDATE material_lots 
+             SET current_quantity = current_quantity - $1 
+             WHERE id = $2`,
+            [reserveQty, lot.id]
+          );
+
+          remainingQty -= reserveQty;
+        }
+      }
+
+      // อัพเดต stock summary
+      for (const [materialId, requiredQty] of materialRequirements) {
+        await queryRunner.manager.query(
+          `UPDATE materials_stock 
+           SET available_qty = available_qty - $1, 
+               reserved_qty = reserved_qty + $1 
+           WHERE material_id = $2`,
+          [requiredQty, materialId]
+        );
       }
 
       plan.status = PlanStatus.RESERVED;
@@ -219,6 +290,90 @@ export class ProductionPlansService {
     plan.updateBy = username;
     
     return this.planRepo.save(plan);
+  }
+
+  async issueMaterials(planId: number, username: string) {
+    const plan = await this.findOne(planId);
+    
+    if (plan.status !== PlanStatus.RESERVED) {
+      throw new BadRequestException('สามารถจัดงานได้เฉพาะแผนที่จองแล้ว');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const reservations = await queryRunner.manager.find(MaterialReservation, {
+        where: { planId }
+      });
+
+      if (!reservations.length) {
+        throw new BadRequestException('ไม่พบข้อมูลการจอง');
+      }
+
+      const issuingType = await queryRunner.manager.query(
+        `SELECT id FROM issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`
+      );
+
+      for (const reservation of reservations) {
+        const lot = await queryRunner.manager.query(
+          `SELECT id, qr_code FROM material_lots WHERE lot_number = $1 LIMIT 1`,
+          [reservation.lotNumber]
+        );
+
+        if (!lot || !lot[0]) {
+          throw new BadRequestException(`ไม่พบ Lot: ${reservation.lotNumber}`);
+        }
+
+        await queryRunner.manager.query(
+          `INSERT INTO material_issuing 
+           (material_id, lot_id, quantity, unit, issued_date, issuing_type_id, 
+            document_type, document_number, remarks, status, create_date, create_by) 
+           VALUES ($1, $2, $3, $4, NOW(), $5, 'PRODUCTION_PLAN', $6, $7, 'COMPLETED', NOW(), $8)`,
+          [
+            reservation.materialId,
+            lot[0].id,
+            reservation.reservedQuantity,
+            'unit',
+            issuingType[0]?.id,
+            plan.planCode,
+            `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
+            username
+          ]
+        );
+      }
+
+      const materialTotals = reservations.reduce((acc, r) => {
+        const qty = Number(r.reservedQuantity);
+        acc[r.materialId] = (acc[r.materialId] || 0) + qty;
+        return acc;
+      }, {} as Record<number, number>);
+
+      for (const [materialId, totalQty] of Object.entries(materialTotals)) {
+        await queryRunner.manager.query(
+          `UPDATE materials_stock 
+           SET total_qty = total_qty - $1, 
+               reserved_qty = reserved_qty - $1 
+           WHERE material_id = $2`,
+          [totalQty, materialId]
+        );
+      }
+
+      await queryRunner.manager.delete(MaterialReservation, { planId });
+
+      plan.status = PlanStatus.CONFIRMED;
+      plan.updateBy = username;
+      await queryRunner.manager.save(plan);
+
+      await queryRunner.commitTransaction();
+      return this.findOne(planId);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async cancel(planId: number, username: string) {
@@ -364,13 +519,42 @@ export class ProductionPlansService {
       });
     }
 
+    const reservations = await this.dataSource.query(
+      `SELECT 
+        mr.material_id,
+        m.mat_code as material_code,
+        m.mat_name as material_name,
+        mr.reserved_quantity,
+        mr.lot_number,
+        ml.qr_code,
+        mr.receive_date,
+        mr.create_date
+      FROM material_reservations mr
+      JOIN materials m ON mr.material_id = m.id
+      LEFT JOIN material_lots ml ON mr.lot_number = ml.lot_number
+      WHERE mr.plan_id = $1
+      ORDER BY m.mat_code, mr.receive_date`,
+      [planId]
+    );
+
     return {
       planId: plan.id,
       planCode: plan.planCode,
       planName: plan.planName,
       planDate: plan.planDate,
       status: plan.status,
-      items: details
+      remarks: plan.remarks,
+      items: details,
+      reservations: reservations.map(r => ({
+        materialId: r.material_id,
+        materialCode: r.material_code,
+        materialName: r.material_name,
+        reservedQuantity: Number(r.reserved_quantity),
+        lotNumber: r.lot_number,
+        qrCode: r.qr_code,
+        receiveDate: r.receive_date,
+        createDate: r.create_date
+      }))
     };
   }
 

@@ -1,4 +1,6 @@
-import { IsString, IsDateString, IsOptional } from 'class-validator';
+import { IsString, IsDateString, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { AddPlanItemDto } from './plan-item.dto';
 
 export class UpdateProductionPlanDto {
   @IsString()
@@ -12,4 +14,10 @@ export class UpdateProductionPlanDto {
   @IsString()
   @IsOptional()
   remarks?: string;
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => AddPlanItemDto)
+  items?: AddPlanItemDto[];
 }
