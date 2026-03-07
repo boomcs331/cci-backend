@@ -199,11 +199,11 @@ export class ProductionPlansService {
       for (const [materialId, requiredQty] of materialRequirements) {
         const totalAvailable = await queryRunner.manager
           .createQueryBuilder()
-          .select('COALESCE(SUM(current_quantity), 0)', 'total')
-          .from('material_lots', 'ml')
+          .select('COALESCE(SUM(remaining_quantity), 0)', 'total')
+          .from('material_receiving_lots', 'ml')
           .where('ml.material_id = :materialId', { materialId })
-          .andWhere('ml.status = :status', { status: 'ACTIVE' })
-          .andWhere('ml.current_quantity > 0')
+          .andWhere('ml.status IN (:...statuses)', { statuses: ['AVAILABLE', 'PARTIAL_USED'] })
+          .andWhere('ml.remaining_quantity > 0')
           .getRawOne();
 
         if (!totalAvailable || Number(totalAvailable.total) < requiredQty) {
@@ -212,7 +212,7 @@ export class ProductionPlansService {
             [materialId]
           );
           throw new BadRequestException(
-            `วัตถุดิบ "${material[0]?.mat_name || materialId}" มีจำนวนไม่เพียงพอ (ต้องการ: ${requiredQty}, มีอยู่: ${totalAvailable?.total || 0})`
+            `วัตถุดิบ "${material[0]?.mat_name || materialId}" มีจำนวนไม่เพียงพอ (ต้องการ: ${requiredQty}, มีอยู่: ${totalAvailable?.total || 0})\n\nกรุณาเพิ่มวัตถุดิบโดยการรับเข้าคลัง (Material Receiving) ก่อนทำการจอง`
           );
         }
       }
@@ -222,30 +222,30 @@ export class ProductionPlansService {
         let remainingQty = requiredQty;
 
         const lots = await queryRunner.manager.query(
-          `SELECT id, lot_number, current_quantity, received_date 
-           FROM material_lots 
+          `SELECT id, lot_no, remaining_quantity, create_date 
+           FROM material_receiving_lots 
            WHERE material_id = $1 
-           AND status = 'ACTIVE' 
-           AND current_quantity > 0 
-           ORDER BY received_date ASC, id ASC`,
+           AND status IN ('AVAILABLE', 'PARTIAL_USED') 
+           AND remaining_quantity > 0 
+           ORDER BY create_date ASC, id ASC`,
           [materialId]
         );
 
         for (const lot of lots) {
           if (remainingQty <= 0) break;
 
-          const reserveQty = Math.min(Number(lot.current_quantity), remainingQty);
+          const reserveQty = Math.min(Number(lot.remaining_quantity), remainingQty);
 
           await queryRunner.manager.query(
             `INSERT INTO material_reservations 
              (plan_id, material_id, reserved_quantity, lot_number, receive_date, create_date) 
              VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [planId, materialId, reserveQty, lot.lot_number, lot.received_date]
+            [planId, materialId, reserveQty, lot.lot_no, lot.create_date]
           );
 
           await queryRunner.manager.query(
-            `UPDATE material_lots 
-             SET current_quantity = current_quantity - $1 
+            `UPDATE material_receiving_lots 
+             SET remaining_quantity = remaining_quantity - $1 
              WHERE id = $2`,
             [reserveQty, lot.id]
           );
@@ -254,15 +254,28 @@ export class ProductionPlansService {
         }
       }
 
-      // อัพเดต stock summary
+      // อัพเดต stock summary (ตรวจสอบว่ามี record ก่อน ถ้าไม่มีให้ insert)
       for (const [materialId, requiredQty] of materialRequirements) {
-        await queryRunner.manager.query(
-          `UPDATE materials_stock 
-           SET available_qty = available_qty - $1, 
-               reserved_qty = reserved_qty + $1 
-           WHERE material_id = $2`,
-          [requiredQty, materialId]
+        const stockExists = await queryRunner.manager.query(
+          `SELECT material_id FROM materials_stock WHERE material_id = $1`,
+          [materialId]
         );
+
+        if (!stockExists || stockExists.length === 0) {
+          await queryRunner.manager.query(
+            `INSERT INTO materials_stock (material_id, total_qty, available_qty, reserved_qty) 
+             VALUES ($1, 0, 0, $2)`,
+            [materialId, requiredQty]
+          );
+        } else {
+          await queryRunner.manager.query(
+            `UPDATE materials_stock 
+             SET available_qty = available_qty - $1, 
+                 reserved_qty = reserved_qty + $1 
+             WHERE material_id = $2`,
+            [requiredQty, materialId]
+          );
+        }
       }
 
       plan.status = PlanStatus.RESERVED;
@@ -273,6 +286,7 @@ export class ProductionPlansService {
       return this.findOne(planId);
     } catch (error) {
       await queryRunner.rollbackTransaction();
+      console.error('Reserve materials error:', error);
       throw error;
     } finally {
       await queryRunner.release();
@@ -318,7 +332,7 @@ export class ProductionPlansService {
 
       for (const reservation of reservations) {
         const lot = await queryRunner.manager.query(
-          `SELECT id, qr_code FROM material_lots WHERE lot_number = $1 LIMIT 1`,
+          `SELECT id, qr_code FROM material_receiving_lots WHERE lot_no = $1 LIMIT 1`,
           [reservation.lotNumber]
         );
 
@@ -393,6 +407,15 @@ export class ProductionPlansService {
         const reservations = await queryRunner.manager.find(MaterialReservation, { where: { planId } });
         
         for (const reservation of reservations) {
+          // คืนจำนวนให้ material_receiving_lots
+          await queryRunner.manager.query(
+            `UPDATE material_receiving_lots 
+             SET remaining_quantity = remaining_quantity + $1 
+             WHERE lot_no = $2`,
+            [reservation.reservedQuantity, reservation.lotNumber]
+          );
+
+          // คืนจำนวนให้ materials_stock
           const stock = await queryRunner.manager.findOne(MaterialsStock, {
             where: { materialId: reservation.materialId },
             lock: { mode: 'pessimistic_write' },
@@ -492,6 +515,15 @@ export class ProductionPlansService {
       const materials: any[] = [];
       for (const bom of boms) {
         const requiredQty = Number(bom.quantityPerUnit) * Number(item.quantity);
+        
+        // ดึงจำนวนจริงจาก material_receiving_lots
+        const lotTotal = await this.dataSource.query(
+          `SELECT COALESCE(SUM(remaining_quantity), 0) as available
+           FROM material_receiving_lots 
+           WHERE material_id = $1 AND status IN ('AVAILABLE', 'PARTIAL_USED') AND remaining_quantity > 0`,
+          [bom.materialId]
+        );
+
         const stock = await this.stockRepo.findOne({
           where: { materialId: bom.materialId }
         });
@@ -503,7 +535,7 @@ export class ProductionPlansService {
           quantityPerUnit: Number(bom.quantityPerUnit),
           requiredQuantity: requiredQty,
           unit: bom.unit,
-          availableQty: stock?.availableQty || 0,
+          availableQty: Number(lotTotal[0]?.available || 0),
           reservedQty: stock?.reservedQty || 0,
           totalQty: stock?.totalQty || 0
         });
@@ -531,7 +563,7 @@ export class ProductionPlansService {
         mr.create_date
       FROM material_reservations mr
       JOIN materials m ON mr.material_id = m.id
-      LEFT JOIN material_lots ml ON mr.lot_number = ml.lot_number
+      LEFT JOIN material_receiving_lots ml ON mr.lot_number = ml.lot_no
       WHERE mr.plan_id = $1
       ORDER BY m.mat_code, mr.receive_date`,
       [planId]
