@@ -326,36 +326,90 @@ export class ProductionPlansService {
         throw new BadRequestException('ไม่พบข้อมูลการจอง');
       }
 
-      const issuingType = await queryRunner.manager.query(
-        `SELECT id FROM issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`
+      // สร้าง material_issue header
+      const issueNo = await this.generateIssueNo(queryRunner);
+      const issue = await queryRunner.manager.query(
+        `INSERT INTO material_issues 
+         (issue_no, issue_date, issue_type, production_order_no, remarks, status, create_date, create_by, update_date, update_by) 
+         VALUES ($1, NOW(), 'PRODUCTION', $2, $3, 'COMPLETED', NOW(), $4, NOW(), $4)
+         RETURNING id`,
+        [issueNo, plan.planCode, `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`, username]
       );
 
+      const issueId = issue[0].id;
+
       for (const reservation of reservations) {
-        const lot = await queryRunner.manager.query(
-          `SELECT id, qr_code FROM material_receiving_lots WHERE lot_no = $1 LIMIT 1`,
-          [reservation.lotNumber]
+        // สร้าง material_issue_item
+        await queryRunner.manager.query(
+          `INSERT INTO material_issue_items 
+           (issue_id, material_id, issued_quantity, unit, create_date, create_by) 
+           VALUES ($1, $2, $3, 'unit', NOW(), $4)`,
+          [issueId, reservation.materialId, reservation.reservedQuantity, username]
         );
 
-        if (!lot || !lot[0]) {
-          throw new BadRequestException(`ไม่พบ Lot: ${reservation.lotNumber}`);
-        }
-
-        await queryRunner.manager.query(
+        // สร้าง material_issuing สำหรับแต่ละ material
+        const issuingNo = await this.generateIssuingNo(queryRunner);
+        const issuingType = await queryRunner.manager.query(
+          `SELECT id FROM issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`
+        );
+        
+        const issuing = await queryRunner.manager.query(
           `INSERT INTO material_issuing 
-           (material_id, lot_id, quantity, unit, issued_date, issuing_type_id, 
-            document_type, document_number, remarks, status, create_date, create_by) 
-           VALUES ($1, $2, $3, $4, NOW(), $5, 'PRODUCTION_PLAN', $6, $7, 'COMPLETED', NOW(), $8)`,
+           (issuing_no, material_id, total_quantity, unit, issuing_date, issuing_type_id, 
+            remark, status, create_date, create_by) 
+           VALUES ($1, $2, $3, 'unit', NOW(), $4, $5, 'COMPLETED', NOW(), $6)
+           RETURNING id`,
           [
+            issuingNo,
             reservation.materialId,
-            lot[0].id,
             reservation.reservedQuantity,
-            'unit',
             issuingType[0]?.id,
-            plan.planCode,
             `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
             username
           ]
         );
+
+        const issuingId = issuing[0].id;
+
+        // ดึง lots แบบ FIFO และตัดจ่ายออก
+        const availableLots = await queryRunner.manager.query(
+          `SELECT id, lot_no, qr_code, remaining_quantity 
+           FROM material_receiving_lots 
+           WHERE material_id = $1 
+           AND status IN ('AVAILABLE', 'PARTIAL_USED') 
+           AND remaining_quantity > 0 
+           ORDER BY create_date ASC, id ASC`,
+          [reservation.materialId]
+        );
+
+        let remainingToIssue = Number(reservation.reservedQuantity);
+
+        for (const lot of availableLots) {
+          if (remainingToIssue <= 0) break;
+
+          const issueFromThisLot = Math.min(Number(lot.remaining_quantity), remainingToIssue);
+
+          // บันทึก material_issuing_lots
+          await queryRunner.manager.query(
+            `INSERT INTO material_issuing_lots 
+             (issuing_id, lot_id, qr_code, quantity, unit) 
+             VALUES ($1, $2, $3, $4, 'unit')`,
+            [issuingId, lot.id, lot.qr_code, issueFromThisLot]
+          );
+
+          // อัพเดท lot
+          const newRemaining = Number(lot.remaining_quantity) - issueFromThisLot;
+          const newStatus = newRemaining === 0 ? 'USED_UP' : 'PARTIAL_USED';
+          
+          await queryRunner.manager.query(
+            `UPDATE material_receiving_lots 
+             SET remaining_quantity = $1, status = $2 
+             WHERE id = $3`,
+            [newRemaining, newStatus, lot.id]
+          );
+
+          remainingToIssue -= issueFromThisLot;
+        }
       }
 
       const materialTotals = reservations.reduce((acc, r) => {
@@ -609,5 +663,49 @@ export class ProductionPlansService {
     }
 
     return `${prefix}${sequence.toString().padStart(4, '0')}`;
+  }
+
+  private async generateIssuingNo(queryRunner: any): Promise<string> {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const prefix = `ISS${year}${month}`;
+
+    const lastIssuing = await queryRunner.manager.query(
+      `SELECT issuing_no FROM material_issuing 
+       WHERE issuing_no LIKE $1 
+       ORDER BY issuing_no DESC LIMIT 1`,
+      [`${prefix}%`]
+    );
+
+    let sequence = 1;
+    if (lastIssuing && lastIssuing[0]) {
+      const lastSequence = parseInt(lastIssuing[0].issuing_no.slice(-4));
+      sequence = lastSequence + 1;
+    }
+
+    return `${prefix}${sequence.toString().padStart(4, '0')}`;
+  }
+
+  private async generateIssueNo(queryRunner: any): Promise<string> {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const prefix = `ISS-${year}${month}`;
+    
+    const lastIssue = await queryRunner.manager.query(
+      `SELECT issue_no FROM material_issues 
+       WHERE issue_no LIKE $1 
+       ORDER BY issue_no DESC LIMIT 1`,
+      [`${prefix}%`]
+    );
+
+    let sequence = 1;
+    if (lastIssue && lastIssue[0]) {
+      const lastSeq = parseInt(lastIssue[0].issue_no.split('-').pop() || '0');
+      sequence = lastSeq + 1;
+    }
+
+    return `${prefix}-${String(sequence).padStart(4, '0')}`;
   }
 }
