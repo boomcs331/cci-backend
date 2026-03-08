@@ -109,6 +109,7 @@ export class ReceivingIssuingService {
           unit: material.unitMaster?.code || 'PCS',
           locationId: dto.locationId,
           expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : undefined,
+          incomeSupplireDate: dto.mfgDate ? new Date(dto.mfgDate) : undefined,
           status: 'AVAILABLE',
           createBy: dto.createBy ?? 'system'
         });
@@ -373,7 +374,8 @@ export class ReceivingIssuingService {
       .createQueryBuilder('receiving')
       .leftJoinAndSelect('receiving.material', 'material')
       .leftJoinAndSelect('receiving.supplier', 'supplier')
-      .leftJoinAndSelect('receiving.lots', 'lots');
+      .leftJoinAndSelect('receiving.lots', 'lots')
+      .addSelect(['lots.incomeSupplireDate']);
 
     // Status filter
     if (status) {
@@ -788,6 +790,22 @@ export class ReceivingIssuingService {
           }
           await queryRunner.manager.save(lot);
 
+          const txnNo = `TXN-${new Date().getFullYear()}-${Date.now()}-${lot.id}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+          const transaction = queryRunner.manager.create(MaterialTransaction, {
+            transactionNo: txnNo,
+            transactionType: 'ISSUE',
+            transactionDate: new Date(dto.issueDate),
+            materialId: item.materialId,
+            lotId: lot.id,
+            qrCode: lot.qrCode,
+            quantity: -issueFromThisLot,
+            remainingQuantity: lot.remainingQuantity,
+            referenceNo: issuingNo,
+            remark: dto.remarks || item.remarks || '',
+            createBy: user
+          });
+          await queryRunner.manager.save(transaction);
+
           remainingToIssue -= issueFromThisLot;
         }
 
@@ -1084,6 +1102,49 @@ export class ReceivingIssuingService {
     });
     if (!stock) throw new NotFoundException('Material stock not found');
     return stock;
+  }
+
+  async getTransactionReport(startDate?: string, endDate?: string, materialId?: number) {
+    const query = this.transactionRepository
+      .createQueryBuilder('txn')
+      .leftJoinAndSelect('txn.material', 'material')
+      .leftJoinAndSelect('txn.lot', 'lot')
+      .orderBy('txn.transactionDate', 'ASC');
+
+    if (startDate) query.andWhere('txn.transactionDate >= :startDate', { startDate });
+    if (endDate) query.andWhere('txn.transactionDate <= :endDate', { endDate });
+    if (materialId) query.andWhere('txn.materialId = :materialId', { materialId });
+
+    const transactions = await query.getMany();
+
+    const grouped = transactions.reduce((acc: any, txn) => {
+      const date = new Date(txn.transactionDate).toISOString().split('T')[0];
+      const key = `${txn.materialId}-${date}`;
+      const qty = Number(txn.quantity);
+      
+      if (!acc[key]) {
+        acc[key] = {
+          materialId: txn.materialId,
+          materialCode: txn.material?.matCode,
+          materialName: txn.material?.matName,
+          transactionDate: date,
+          received: 0,
+          issued: 0,
+          balance: 0,
+        };
+      }
+      
+      if (qty > 0) {
+        acc[key].received += qty;
+      } else {
+        acc[key].issued += Math.abs(qty);
+      }
+      acc[key].balance = acc[key].received - acc[key].issued;
+      
+      return acc;
+    }, {});
+
+    return Object.values(grouped);
   }
 
   async createIssuingFromMaterialBom(dto: any, user: string) {

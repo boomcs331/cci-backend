@@ -28,6 +28,10 @@ export class CreateReceivingDto {
   expiryDate?: string;
 
   @IsOptional()
+  @IsDateString()
+  mfgDate?: string;
+
+  @IsOptional()
   @IsString()
   createBy?: string;
 }

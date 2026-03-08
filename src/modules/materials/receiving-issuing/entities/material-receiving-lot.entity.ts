@@ -35,6 +35,9 @@ export class MaterialReceivingLot {
   @Column({ name: 'expiry_date', type: 'date', nullable: true })
   expiryDate: Date;
 
+  @Column({ name: 'income_supplire_date', type: 'date', nullable: true })
+  incomeSupplireDate: Date;
+
   @Column({ length: 20, default: 'AVAILABLE' })
   status: string;
 

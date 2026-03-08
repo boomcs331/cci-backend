@@ -20,6 +20,12 @@ export class MaterialsController {
     return ResponseHelper.success(materials, 'Materials retrieved successfully');
   }
 
+  @Get('stock')
+  async getStockList() {
+    const stocks = await this.materialsService.getStockList();
+    return ResponseHelper.success(stocks, 'Stock list retrieved successfully');
+  }
+
   @Get()
   async getAllMaterials(
     @Query('page') page: string = '1',

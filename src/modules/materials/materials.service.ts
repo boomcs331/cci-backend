@@ -454,4 +454,22 @@ export class MaterialsService {
   async findAllMaterialsLocationsForDropdown(): Promise<MaterialsLocation[]> {
     return await this.materialsLocationRepository.find({ order: { id: 'ASC' } });
   }
+
+  async getStockList(): Promise<any[]> {
+    const materials = await this.materialRepository.find({
+      relations: ['stock', 'unitMaster'],
+      where: { isActive: true },
+      order: { matCode: 'ASC' }
+    });
+
+    return materials.map(material => ({
+      id: material.id,
+      matCode: material.matCode,
+      matName: material.matName,
+      currentStock: material.stock?.totalQty || 0,
+      reservedStock: material.stock?.reservedQty || 0,
+      availableStock: material.stock?.availableQty || 0,
+      unit: material.unitMaster?.name || '-'
+    }));
+  }
 }

@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ReceivingIssuingService } from './receiving-issuing.service';
-import { CreateReceivingDto, CreateIssuingDto, CreateIssuingWithDocumentDto, CreateIssuingFromBomDto } from './dto';
+import { CreateReceivingDto, CreateIssuingDto, CreateIssuingWithDocumentDto, CreateIssuingFromBomDto, MaterialTransactionReportDto } from './dto';
 import { CreateManualIssueDto, CreateProductionIssueDto, PreviewProductionIssueDto } from '../dto/material-issue.dto';
 import { ResponseHelper } from '@app/common';
 
@@ -205,5 +205,15 @@ export class ReceivingIssuingController {
   async getMaterialStock(@Param('materialId') materialId: string) {
     const stock = await this.service.getMaterialStock(parseInt(materialId));
     return ResponseHelper.success(stock, 'Material stock retrieved successfully');
+  }
+
+  @Get('report/transactions')
+  async getTransactionReport(@Query() query: MaterialTransactionReportDto) {
+    const report = await this.service.getTransactionReport(
+      query.startDate,
+      query.endDate,
+      query.materialId
+    );
+    return ResponseHelper.success(report, 'Transaction report retrieved successfully');
   }
 }
