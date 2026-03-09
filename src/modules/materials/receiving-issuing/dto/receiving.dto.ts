@@ -33,5 +33,13 @@ export class CreateReceivingDto {
 
   @IsOptional()
   @IsString()
+  lotNo?: string;
+
+  @IsOptional()
+  @IsString()
+  lotPdNo?: string;
+
+  @IsOptional()
+  @IsString()
   createBy?: string;
 }

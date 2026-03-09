@@ -78,30 +78,50 @@ export class ReceivingIssuingService {
 
       // Create lots automatically
       const today = new Date();
-      const dateStr = today.getFullYear() + 
-                      String(today.getMonth() + 1).padStart(2, '0') + 
-                      String(today.getDate()).padStart(2, '0');
+      const pcDateStr = today.getFullYear() + 
+                        String(today.getMonth() + 1).padStart(2, '0') + 
+                        String(today.getDate()).padStart(2, '0');
       
-      // Count existing lots for this material on this date
+      // Use mfgDate for PD lot, fallback to today if not provided
+      const pdDate = dto.mfgDate ? new Date(dto.mfgDate) : today;
+      const pdDateStr = pdDate.getFullYear() + 
+                        String(pdDate.getMonth() + 1).padStart(2, '0') + 
+                        String(pdDate.getDate()).padStart(2, '0');
+      
+      // Count existing PC lots for today
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
       
-      const existingLotsCount = await manager
+      const existingPcCount = await manager
         .createQueryBuilder(MaterialReceivingLot, 'lot')
-        .where('lot.materialId = :materialId', { materialId: dto.materialId })
+        .where('lot.lotNo LIKE :prefix', { prefix: `PC${pcDateStr}-%` })
         .andWhere('lot.createDate >= :startOfDay', { startOfDay })
         .andWhere('lot.createDate < :endOfDay', { endOfDay })
         .getCount();
 
+      // Count existing PD lots for mfgDate
+      const pdStartOfDay = new Date(pdDate.getFullYear(), pdDate.getMonth(), pdDate.getDate());
+      const pdEndOfDay = new Date(pdDate.getFullYear(), pdDate.getMonth(), pdDate.getDate() + 1);
+      
+      const existingPdCount = await manager
+        .createQueryBuilder(MaterialReceivingLot, 'lot')
+        .where('lot.lotPdNo LIKE :prefix', { prefix: `PD${pdDateStr}-%` })
+        .andWhere('lot.incomeSupplireDate >= :pdStartOfDay', { pdStartOfDay })
+        .andWhere('lot.incomeSupplireDate < :pdEndOfDay', { pdEndOfDay })
+        .getCount();
+
       for (let i = 0; i < numberOfLots; i++) {
-        const lotSeq = String(existingLotsCount + i + 1).padStart(3, '0');
-        const lotNo = `LOT-${dto.materialId}-${dateStr}-${lotSeq}`;
+        const pcRunNo = String(existingPcCount + i + 1).padStart(3, '0');
+        const pdRunNo = String(existingPdCount + i + 1).padStart(3, '0');
+        const lotNo = `PC${pcDateStr}-${pcRunNo}`;
+        const lotPdNo = `PD${pdDateStr}-${pdRunNo}`;
         const qrCode = `QR-${lotNo}-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
         const lotQuantity = i === numberOfLots - 1 ? lastLotQuantity : quantityPerLot;
 
         const lot = manager.create(MaterialReceivingLot, {
           receivingId: savedReceiving.id,
           lotNo,
+          lotPdNo,
           qrCode,
           materialId: dto.materialId,
           quantity: lotQuantity,

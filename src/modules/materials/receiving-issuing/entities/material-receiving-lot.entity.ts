@@ -14,6 +14,9 @@ export class MaterialReceivingLot {
   @Column({ name: 'lot_no', length: 50, unique: true })
   lotNo: string;
 
+  @Column({ name: 'lot_pd_no', length: 50, nullable: true })
+  lotPdNo: string;
+
   @Column({ name: 'qr_code', length: 100, unique: true })
   qrCode: string;
 
