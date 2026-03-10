@@ -24,7 +24,7 @@ export class ProductionLot {
   quantity: number;
 
   @Column({ name: 'current_process_id', nullable: true })
-  currentProcessId: number;
+  currentProcessId?: number;
 
   @Column({ default: 'PENDING' })
   status: string; // PENDING, IN_PROGRESS, COMPLETED, REJECTED

@@ -26,7 +26,7 @@ export class ProductionLotTracking {
   operator: string;
 
   @Column({ type: 'text', nullable: true })
-  remarks: string;
+  remarks?: string;
 
   @CreateDateColumn({ name: 'create_date' })
   createDate: Date;

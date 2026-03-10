@@ -150,7 +150,7 @@ export class ProductionOrdersService {
       
       if (currentIndex === allProcesses.length - 1) {
         lot.status = 'COMPLETED';
-        lot.currentProcessId = null;
+        lot.currentProcessId = undefined;
       } else {
         lot.currentProcessId = allProcesses[currentIndex + 1].id;
       }
