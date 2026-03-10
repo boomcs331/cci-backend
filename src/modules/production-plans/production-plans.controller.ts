@@ -81,6 +81,12 @@ export class ProductionPlansController {
     return this.service.confirm(+id, username);
   }
 
+  @Post(':id/confirm-and-issue')
+  confirmAndIssue(@Param('id') id: string, @Request() req) {
+    const username = req.user?.username || 'system';
+    return this.service.confirmAndIssue(+id, username);
+  }
+
   @Post(':id/issue')
   issue(@Param('id') id: string, @Request() req) {
     const username = req.user?.username || 'system';

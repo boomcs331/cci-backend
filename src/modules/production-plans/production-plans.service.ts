@@ -306,6 +306,160 @@ export class ProductionPlansService {
     return this.planRepo.save(plan);
   }
 
+  async confirmAndIssue(planId: number, username: string) {
+    const plan = await this.findOne(planId);
+    
+    if (plan.status !== PlanStatus.RESERVED) {
+      throw new BadRequestException('สามารถยืนยันและจ่ายออกได้เฉพาะแผนที่จอง material แล้ว');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const reservations = await queryRunner.manager.find(MaterialReservation, {
+        where: { planId },
+        relations: ['material']
+      });
+
+      if (!reservations.length) {
+        throw new BadRequestException('ไม่พบข้อมูลการจอง');
+      }
+
+      // สร้าง material_issue header
+      const issueNo = await this.generateIssueNo(queryRunner);
+      const issue = await queryRunner.manager.query(
+        `INSERT INTO material_issues 
+         (issue_no, issue_date, issue_type, production_order_no, remarks, status, create_date, create_by, update_date, update_by) 
+         VALUES ($1, NOW(), 'PRODUCTION', $2, $3, 'COMPLETED', NOW(), $4, NOW(), $4)
+         RETURNING id`,
+        [issueNo, plan.planCode, `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`, username]
+      );
+
+      const issueId = issue[0].id;
+
+      // สร้าง material_issue_items
+      for (const reservation of reservations) {
+        await queryRunner.manager.query(
+          `INSERT INTO material_issue_items 
+           (issue_id, material_id, issued_quantity, unit, create_date, create_by) 
+           VALUES ($1, $2, $3, $4, NOW(), $5)`,
+          [issueId, reservation.materialId, reservation.reservedQuantity, reservation.material?.unitMaster?.name || 'unit', username]
+        );
+      }
+
+      // สร้าง material_issuing และตัดจ่ายออกจาก lots
+      for (const reservation of reservations) {
+        const issuingNo = await this.generateIssuingNo(queryRunner);
+        const issuingType = await queryRunner.manager.query(
+          `SELECT id FROM issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`
+        );
+        
+        const issuing = await queryRunner.manager.query(
+          `INSERT INTO material_issuing 
+           (issuing_no, material_id, total_quantity, unit, issuing_date, issuing_type_id, 
+            remark, status, create_date, create_by) 
+           VALUES ($1, $2, $3, $4, NOW(), $5, $6, 'COMPLETED', NOW(), $7)
+           RETURNING id`,
+          [
+            issuingNo,
+            reservation.materialId,
+            reservation.reservedQuantity,
+            reservation.material?.unitMaster?.name || 'unit',
+            issuingType[0]?.id,
+            `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
+            username
+          ]
+        );
+
+        const issuingId = issuing[0].id;
+
+        // ดึง lots แบบ FIFO และตัดจ่ายออก
+        const availableLots = await queryRunner.manager.query(
+          `SELECT id, lot_no, qr_code, remaining_quantity 
+           FROM material_receiving_lots 
+           WHERE material_id = $1 
+           AND status IN ('AVAILABLE', 'PARTIAL_USED') 
+           AND remaining_quantity > 0 
+           ORDER BY create_date ASC, id ASC`,
+          [reservation.materialId]
+        );
+
+        let remainingToIssue = Number(reservation.reservedQuantity);
+
+        for (const lot of availableLots) {
+          if (remainingToIssue <= 0) break;
+
+          const issueFromThisLot = Math.min(Number(lot.remaining_quantity), remainingToIssue);
+
+          // บันทึก material_issuing_lots
+          await queryRunner.manager.query(
+            `INSERT INTO material_issuing_lots 
+             (issuing_id, lot_id, qr_code, quantity, unit) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [issuingId, lot.id, lot.qr_code, issueFromThisLot, reservation.material?.unitMaster?.name || 'unit']
+          );
+
+          // อัพเดท lot
+          const newRemaining = Number(lot.remaining_quantity) - issueFromThisLot;
+          const newStatus = newRemaining === 0 ? 'USED_UP' : 'PARTIAL_USED';
+          
+          await queryRunner.manager.query(
+            `UPDATE material_receiving_lots 
+             SET remaining_quantity = $1, status = $2 
+             WHERE id = $3`,
+            [newRemaining, newStatus, lot.id]
+          );
+
+          // สร้าง transaction log
+          const txnNo = `TXN-${new Date().getFullYear()}-${Date.now()}-${lot.id}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+          await queryRunner.manager.query(
+            `INSERT INTO material_transactions 
+             (transaction_no, transaction_type, transaction_date, material_id, lot_id, qr_code, quantity, remaining_quantity, reference_no, remark, create_by) 
+             VALUES ($1, 'ISSUE', NOW(), $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [txnNo, reservation.materialId, lot.id, lot.qr_code, -issueFromThisLot, newRemaining, issuingNo, `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`, username]
+          );
+
+          remainingToIssue -= issueFromThisLot;
+        }
+      }
+
+      // อัพเดท materials_stock
+      const materialTotals = reservations.reduce((acc, r) => {
+        const qty = Number(r.reservedQuantity);
+        acc[r.materialId] = (acc[r.materialId] || 0) + qty;
+        return acc;
+      }, {} as Record<number, number>);
+
+      for (const [materialId, totalQty] of Object.entries(materialTotals)) {
+        await queryRunner.manager.query(
+          `UPDATE materials_stock 
+           SET total_qty = total_qty - $1, 
+               reserved_qty = reserved_qty - $1 
+           WHERE material_id = $2`,
+          [totalQty, materialId]
+        );
+      }
+
+      // ลบข้อมูลการจอง
+      await queryRunner.manager.delete(MaterialReservation, { planId });
+
+      // อัพเดทสถานะแผน
+      plan.status = PlanStatus.CONFIRMED;
+      plan.updateBy = username;
+      await queryRunner.manager.save(plan);
+
+      await queryRunner.commitTransaction();
+      return this.findOne(planId);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   async issueMaterials(planId: number, username: string) {
     const plan = await this.findOne(planId);
     
