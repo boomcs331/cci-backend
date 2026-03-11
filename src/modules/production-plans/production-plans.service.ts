@@ -227,7 +227,10 @@ export class ProductionPlansService {
            WHERE material_id = $1 
            AND status IN ('AVAILABLE', 'PARTIAL_USED') 
            AND remaining_quantity > 0 
-           ORDER BY create_date ASC, id ASC`,
+           ORDER BY 
+             CAST(RIGHT(lot_no, 3) AS INTEGER) ASC,
+             create_date ASC, 
+             id ASC`,
           [materialId]
         );
 
@@ -382,7 +385,10 @@ export class ProductionPlansService {
            WHERE material_id = $1 
            AND status IN ('AVAILABLE', 'PARTIAL_USED') 
            AND remaining_quantity > 0 
-           ORDER BY create_date ASC, id ASC`,
+           ORDER BY 
+             CAST(RIGHT(lot_no, 3) AS INTEGER) ASC,
+             create_date ASC, 
+             id ASC`,
           [reservation.materialId]
         );
 
@@ -532,7 +538,10 @@ export class ProductionPlansService {
            WHERE material_id = $1 
            AND status IN ('AVAILABLE', 'PARTIAL_USED') 
            AND remaining_quantity > 0 
-           ORDER BY create_date ASC, id ASC`,
+           ORDER BY 
+             CAST(RIGHT(lot_no, 3) AS INTEGER) ASC,
+             create_date ASC, 
+             id ASC`,
           [reservation.materialId]
         );
 
