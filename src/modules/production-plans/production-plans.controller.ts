@@ -98,4 +98,24 @@ export class ProductionPlansController {
     const username = req.user?.username || 'system';
     return this.service.cancel(+id, username);
   }
+
+  @Post('fix-remaining-quantity')
+  fixRemainingQuantity() {
+    return this.service.fixRemainingQuantity();
+  }
+
+  @Get('debug/material/:materialCode')
+  debugMaterial(@Param('materialCode') materialCode: string) {
+    return this.service.debugMaterialData(materialCode);
+  }
+
+  @Get('debug/check-availability/:materialId')
+  async checkMaterialAvailability(@Param('materialId') materialId: string) {
+    return this.service.checkMaterialAvailability(+materialId);
+  }
+
+  @Post('fix-lots-from-stock')
+  fixLotsFromStock() {
+    return this.service.fixLotsFromStock();
+  }
 }

@@ -469,6 +469,7 @@ export class MaterialsService {
       currentStock: material.stock?.totalQty || 0,
       reservedStock: material.stock?.reservedQty || 0,
       availableStock: material.stock?.availableQty || 0,
+      minStock: material.minStock || 0,
       unit: material.unitMaster?.name || '-'
     }));
   }
