@@ -1241,6 +1241,7 @@ export class ProductionPlansService {
         m.mat_name as material_name,
         mr.reserved_quantity,
         mr.lot_number,
+        ml.lot_pd_no,
         ml.qr_code,
         mr.receive_date,
         mr.create_date
@@ -1266,6 +1267,7 @@ export class ProductionPlansService {
         materialName: r.material_name,
         reservedQuantity: Number(r.reserved_quantity),
         lotNumber: r.lot_number,
+        lotPdNo: r.lot_pd_no,
         qrCode: r.qr_code,
         receiveDate: r.receive_date,
         createDate: r.create_date
