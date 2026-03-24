@@ -37,29 +37,8 @@ export class AuthAuditService {
 
   async logLoginAttempt(username: string, clientIp: string, userAgent: string) {
     try {
-      const authLog = this.authLogRepository.create({
-        action: AuthAction.LOGIN_ATTEMPT,
-        username,
-        clientIp,
-        userAgent,
-        duration: 0,
-        isSuccess: false,
-      });
-
-      await this.authLogRepository.save(authLog);
-
-      // Backup to file
-      const logEntry: LoginAuditLog = {
-        timestamp: new Date().toISOString(),
-        action: 'LOGIN_ATTEMPT',
-        username,
-        clientIp,
-        userAgent,
-        duration: 0,
-      };
-      this.writeAuditLog(logEntry);
-      
-      this.logger.log(`Login attempt: ${username} from ${clientIp}`);
+      // Intentionally do not persist LOGIN_ATTEMPT events.
+      this.logger.log(`Login attempt observed (not persisted): ${username} from ${clientIp}`);
     } catch (error) {
       this.logger.error(`Failed to log login attempt: ${error.message}`);
     }
