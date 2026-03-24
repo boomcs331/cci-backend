@@ -37,8 +37,10 @@ export class AuthAuditService {
 
   async logLoginAttempt(username: string, clientIp: string, userAgent: string) {
     try {
-      // Intentionally do not persist LOGIN_ATTEMPT events.
-      this.logger.log(`Login attempt observed (not persisted): ${username} from ${clientIp}`);
+      // Intentionally do not persist or emit LOGIN_ATTEMPT events.
+      void username;
+      void clientIp;
+      void userAgent;
     } catch (error) {
       this.logger.error(`Failed to log login attempt: ${error.message}`);
     }
