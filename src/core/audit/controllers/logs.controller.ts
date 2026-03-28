@@ -79,7 +79,7 @@ export class LogsController {
 
     return {
       status: 'healthy',
-      lastLogTime: recentLogs.length > 0 ? recentLogs[0].timestamp : null,
+      lastLogTime: recentLogs.length > 0 ? recentLogs[0].loggedAt : null,
       recentErrorCount: recentErrors.length,
       recentRequestCount: stats.totalRequests,
       averageResponseTime: stats.averageResponseTime,

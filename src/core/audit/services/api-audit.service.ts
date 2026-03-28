@@ -6,7 +6,7 @@ import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 export interface ApiAuditLog {
-  timestamp: string;
+  loggedAt: string;
   requestId: string;
   method: string;
   url: string;
@@ -50,7 +50,7 @@ export class ApiAuditService {
   async getRecentApiCalls(limit: number = 100): Promise<ApiLog[]> {
     try {
       return await this.apiLogRepository.find({
-        order: { timestamp: 'DESC' },
+        order: { loggedAt: 'DESC' },
         take: limit,
       });
     } catch (error) {
@@ -64,7 +64,7 @@ export class ApiAuditService {
     try {
       return await this.apiLogRepository.find({
         where: { isError: true },
-        order: { timestamp: 'DESC' },
+        order: { loggedAt: 'DESC' },
         take: limit,
       });
     } catch (error) {
@@ -88,37 +88,37 @@ export class ApiAuditService {
         fastestRequest,
       ] = await Promise.all([
         this.apiLogRepository.count({
-          where: { timestamp: MoreThan(cutoffTime) },
+          where: { loggedAt: MoreThan(cutoffTime) },
         }),
         this.apiLogRepository.count({
           where: { 
-            timestamp: MoreThan(cutoffTime),
+            loggedAt: MoreThan(cutoffTime),
             statusCode: Between(200, 399),
           },
         }),
         this.apiLogRepository.count({
           where: { 
-            timestamp: MoreThan(cutoffTime),
+            loggedAt: MoreThan(cutoffTime),
             statusCode: Between(400, 499),
           },
         }),
         this.apiLogRepository.count({
           where: { 
-            timestamp: MoreThan(cutoffTime),
+            loggedAt: MoreThan(cutoffTime),
             statusCode: Between(500, 599),
           },
         }),
         this.apiLogRepository
           .createQueryBuilder('log')
           .select('AVG(log.duration)', 'avg')
-          .where('log.timestamp > :cutoffTime', { cutoffTime })
+          .where('log.loggedAt > :cutoffTime', { cutoffTime })
           .getRawOne(),
         this.apiLogRepository.findOne({
-          where: { timestamp: MoreThan(cutoffTime) },
+          where: { loggedAt: MoreThan(cutoffTime) },
           order: { duration: 'DESC' },
         }),
         this.apiLogRepository.findOne({
-          where: { timestamp: MoreThan(cutoffTime) },
+          where: { loggedAt: MoreThan(cutoffTime) },
           order: { duration: 'ASC' },
         }),
       ]);
@@ -128,7 +128,7 @@ export class ApiAuditService {
         .createQueryBuilder('log')
         .select('CONCAT(log.method, \' \', log.url)', 'endpoint')
         .addSelect('COUNT(*)', 'count')
-        .where('log.timestamp > :cutoffTime', { cutoffTime })
+        .where('log.loggedAt > :cutoffTime', { cutoffTime })
         .groupBy('log.method, log.url')
         .orderBy('count', 'DESC')
         .limit(10)
@@ -139,7 +139,7 @@ export class ApiAuditService {
         .createQueryBuilder('log')
         .select('log.clientIp', 'ip')
         .addSelect('COUNT(*)', 'count')
-        .where('log.timestamp > :cutoffTime', { cutoffTime })
+        .where('log.loggedAt > :cutoffTime', { cutoffTime })
         .groupBy('log.clientIp')
         .orderBy('count', 'DESC')
         .limit(10)
@@ -201,7 +201,7 @@ export class ApiAuditService {
     try {
       return await this.apiLogRepository.find({
         where: { clientIp: ip },
-        order: { timestamp: 'DESC' },
+        order: { loggedAt: 'DESC' },
         take: limit,
       });
     } catch (error) {
@@ -217,7 +217,7 @@ export class ApiAuditService {
         .createQueryBuilder('log')
         .where('log.method = :method', { method })
         .andWhere('log.url LIKE :url', { url: `%${url}%` })
-        .orderBy('log.timestamp', 'DESC')
+        .orderBy('log.loggedAt', 'DESC')
         .limit(limit)
         .getMany();
     } catch (error) {
@@ -235,7 +235,8 @@ export class ApiAuditService {
       const result = await this.apiLogRepository
         .createQueryBuilder()
         .delete()
-        .where('timestamp < :cutoffDate', { cutoffDate })
+        .from(ApiLog)
+        .where('logged_at < :cutoffDate', { cutoffDate })
         .execute();
 
       this.logger.log(`Cleaned ${result.affected} old API logs older than ${daysToKeep} days`);
@@ -253,16 +254,16 @@ export class ApiAuditService {
         this.apiLogRepository.count(),
         this.apiLogRepository.count({ where: { isError: true } }),
         this.apiLogRepository.count({ where: { isSlow: true } }),
-        this.apiLogRepository.findOne({ order: { timestamp: 'ASC' } }),
-        this.apiLogRepository.findOne({ order: { timestamp: 'DESC' } }),
+        this.apiLogRepository.findOne({ order: { loggedAt: 'ASC' } }),
+        this.apiLogRepository.findOne({ order: { loggedAt: 'DESC' } }),
       ]);
 
       return {
         totalLogs,
         errorLogs,
         slowLogs,
-        oldestLog: oldestLog?.timestamp,
-        newestLog: newestLog?.timestamp,
+        oldestLog: oldestLog?.loggedAt,
+        newestLog: newestLog?.loggedAt,
       };
     } catch (error) {
       this.logger.error(`Failed to get database stats: ${error.message}`);

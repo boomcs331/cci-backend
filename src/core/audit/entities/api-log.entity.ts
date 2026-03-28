@@ -7,7 +7,6 @@ import {
 } from 'typeorm';
 
 @Entity('api_logs')
-@Index(['timestamp'])
 @Index(['clientIp'])
 @Index(['statusCode'])
 @Index(['method', 'url'])
@@ -15,8 +14,9 @@ export class ApiLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @CreateDateColumn()
-  timestamp: Date;
+  @Index()
+  @CreateDateColumn({ name: 'logged_at', type: 'timestamp' })
+  loggedAt: Date;
 
   @Column({ name: 'request_id', length: 50 })
   @Index()

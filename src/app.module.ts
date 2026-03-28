@@ -16,6 +16,8 @@ import { AuditModule } from './core/audit/audit.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      // docker-compose.host-db.yml ตั้ง DOCKER_CONTAINER=1 — ใช้แต่ env จาก Docker (กัน .env บน host ที่มี DB_HOST=localhost)
+      ignoreEnvFile: process.env.DOCKER_CONTAINER === '1',
     }),
     DatabaseModule,
     CommonModule,

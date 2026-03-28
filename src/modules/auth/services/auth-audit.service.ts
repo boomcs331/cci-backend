@@ -207,7 +207,7 @@ export class AuthAuditService {
   async getRecentLoginAttempts(limit: number = 100): Promise<AuthLog[]> {
     try {
       return await this.authLogRepository.find({
-        order: { timestamp: 'DESC' },
+        order: { loggedAt: 'DESC' },
         take: limit,
       });
     } catch (error) {
@@ -224,9 +224,9 @@ export class AuthAuditService {
       return await this.authLogRepository.find({
         where: { 
           action: AuthAction.LOGIN_FAILED,
-          timestamp: MoreThan(cutoffTime),
+          loggedAt: MoreThan(cutoffTime),
         },
-        order: { timestamp: 'DESC' },
+        order: { loggedAt: 'DESC' },
       });
     } catch (error) {
       this.logger.error(`Failed to get failed login attempts: ${error.message}`);
@@ -243,19 +243,19 @@ export class AuthAuditService {
         this.authLogRepository.count({
           where: { 
             action: AuthAction.LOGIN_ATTEMPT,
-            timestamp: MoreThan(cutoffTime),
+            loggedAt: MoreThan(cutoffTime),
           },
         }),
         this.authLogRepository.count({
           where: { 
             action: AuthAction.LOGIN_SUCCESS,
-            timestamp: MoreThan(cutoffTime),
+            loggedAt: MoreThan(cutoffTime),
           },
         }),
         this.authLogRepository.count({
           where: { 
             action: AuthAction.LOGIN_FAILED,
-            timestamp: MoreThan(cutoffTime),
+            loggedAt: MoreThan(cutoffTime),
           },
         }),
       ]);
@@ -266,7 +266,7 @@ export class AuthAuditService {
         .select('log.clientIp', 'ip')
         .addSelect('COUNT(*)', 'count')
         .where('log.action = :action', { action: AuthAction.LOGIN_FAILED })
-        .andWhere('log.timestamp > :cutoffTime', { cutoffTime })
+        .andWhere('log.loggedAt > :cutoffTime', { cutoffTime })
         .groupBy('log.clientIp')
         .orderBy('count', 'DESC')
         .limit(10)

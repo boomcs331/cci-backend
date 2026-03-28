@@ -22,7 +22,9 @@
     "db:test": "ts-node scripts/test-db-connection.ts",
     "seed:auth": "ts-node scripts/seed-auth-data.ts",
     "seed:materials": "ts-node scripts/insert-materials-mockup.ts",
-    "setup:logging": "ts-node scripts/setup-logging-database.ts"
+    "setup:logging": "ts-node scripts/setup-logging-database.ts",
+    "docker:host-db": "docker compose -f docker-compose.host-db.yml up --build",
+    "docker:host-db:detach": "docker compose -f docker-compose.host-db.yml up --build -d"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

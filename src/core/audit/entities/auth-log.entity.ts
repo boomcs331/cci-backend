@@ -19,7 +19,6 @@ export enum AuthAction {
 }
 
 @Entity('auth_logs')
-@Index(['timestamp'])
 @Index(['action'])
 @Index(['username'])
 @Index(['clientIp'])
@@ -27,8 +26,9 @@ export class AuthLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @CreateDateColumn()
-  timestamp: Date;
+  @Index()
+  @CreateDateColumn({ name: 'logged_at', type: 'timestamp' })
+  loggedAt: Date;
 
   @Column({
     type: 'enum',
