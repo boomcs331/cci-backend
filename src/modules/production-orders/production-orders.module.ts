@@ -4,6 +4,7 @@ import { ProductionOrdersController } from './production-orders.controller';
 import { ProductionOrdersService } from './production-orders.service';
 import { ProductionOrder, ProductionLot, ProductionProcess, ProductionLotTracking } from './entities';
 import { Product } from '../products/entities/product.entity';
+import { ProductionPlan, ProductionPlanItem } from '../production-plans/entities';
 
 @Module({
   imports: [
@@ -13,6 +14,8 @@ import { Product } from '../products/entities/product.entity';
       ProductionProcess,
       ProductionLotTracking,
       Product,
+      ProductionPlan,
+      ProductionPlanItem,
     ]),
   ],
   controllers: [ProductionOrdersController],

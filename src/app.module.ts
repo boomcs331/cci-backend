@@ -8,6 +8,7 @@ import { CommonModule } from './common/common.module';
 import { MaterialsModule } from './modules/materials/materials.module';
 import { ProductsModule } from './modules/products/products.module';
 import { ProductionPlansModule } from './modules/production-plans/production-plans.module';
+import { ProductionOrdersModule } from './modules/production-orders/production-orders.module';
 import { AuditModule } from './core/audit/audit.module';
 
 
@@ -26,6 +27,7 @@ import { AuditModule } from './core/audit/audit.module';
     MaterialsModule,
     ProductsModule,
     ProductionPlansModule,
+    ProductionOrdersModule,
   ],
   controllers: [AppController],
   providers: [

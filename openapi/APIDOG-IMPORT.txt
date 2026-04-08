@@ -1,0 +1,21 @@
+นำเข้า Apidog (หรือ Postman: Import → OpenAPI)
+==============================================
+
+ไฟล์:
+  1) openapi/cci-backend.openapi.yaml
+     — App, Auth, Products, Materials, Transactions, Material issues, Production plans/orders, Logs
+
+  2) openapi/cci-backend.masters.openapi.yaml
+     — Masters สินค้า (/masters/products/...) และ Masters วัตถุดิบ (/masters/...)
+
+ขั้นตอนแนะนำใน Apidog:
+  - สร้างโปรเจกต์ → Import → OpenAPI → เลือก cci-backend.openapi.yaml
+  - Import ซ้ำ → เลือก cci-backend.masters.openapi.yaml (รวม endpoint เข้าโปรเจกต์เดิม)
+
+Environment:
+  - ตั้งตัวแปร baseUrl = http://localhost:3006 (หรือพอร์ตจาก .env)
+  - หลัง login ใส่ Bearer token ใน Auth ของ Apidog ถ้า API มี JWT
+
+หมายเหตุ:
+  - Request body หลายจุดเป็น schema แบบ object ทั่วไป — ดู DTO ในโฟลเดอร์ src/modules/**/dto สำหรับฟิลด์จริง
+  - Path ที่มี {qrCode} ถ้ามีอักขระพิเศษให้ URL-encode

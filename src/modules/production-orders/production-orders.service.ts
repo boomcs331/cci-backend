@@ -26,20 +26,29 @@ export class ProductionOrdersService {
       const product = await manager.findOne(Product, { where: { id: dto.productId } });
       if (!product) throw new NotFoundException('Product not found');
 
-      const lotSize = product.lotSize || 100;
-      const totalLots = Math.ceil(dto.orderQuantity / lotSize);
+      const orderQty = Number(dto.orderQuantity);
+
+      const lotSize =
+        dto.lotSize && dto.lotSize > 0
+          ? dto.lotSize
+          : product.lotSize && product.lotSize > 0
+            ? product.lotSize
+            : 100;
+      const totalLots = Math.ceil(orderQty / lotSize);
 
       const orderNo = await this.generateOrderNo();
 
       const order = manager.create(ProductionOrder, {
         orderNo,
         productId: dto.productId,
-        orderQuantity: dto.orderQuantity,
+        orderQuantity: orderQty,
         lotSize,
         totalLots,
         status: 'DRAFT',
         remarks: dto.remarks,
         createBy: user,
+        planId: dto.planId,
+        planItemId: dto.planItemId,
       });
       const savedOrder = await manager.save(order);
 
@@ -52,9 +61,10 @@ export class ProductionOrdersService {
         const seqNo = i + 1;
         const lotNo = `${orderNo}-LOT${String(seqNo).padStart(3, '0')}`;
         const qrCode = `QR-${lotNo}-${Date.now() + i}`;
-        const quantity = i === totalLots - 1 
-          ? dto.orderQuantity - (lotSize * (totalLots - 1))
-          : lotSize;
+        const quantity =
+          i === totalLots - 1
+            ? orderQty - lotSize * (totalLots - 1)
+            : lotSize;
 
         const lot = manager.create(ProductionLot, {
           orderId: savedOrder.id,
@@ -85,7 +95,7 @@ export class ProductionOrdersService {
   async findOrderWithLots(id: number) {
     const order = await this.orderRepo.findOne({
       where: { id },
-      relations: ['product', 'lots', 'lots.currentProcess'],
+      relations: ['product', 'lots', 'lots.currentProcess', 'plan', 'planItem'],
     });
     if (!order) throw new NotFoundException('Order not found');
     return order;

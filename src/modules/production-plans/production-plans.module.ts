@@ -5,9 +5,11 @@ import { ProductionPlansService } from './production-plans.service';
 import { ProductionPlan, ProductionPlanItem, MaterialReservation } from './entities';
 import { Product, ProductBom } from '../products/entities';
 import { MaterialsStock } from '../materials/entities/materials-stock.entity';
+import { ProductionOrdersModule } from '../production-orders/production-orders.module';
 
 @Module({
   imports: [
+    ProductionOrdersModule,
     TypeOrmModule.forFeature([
       ProductionPlan,
       ProductionPlanItem,

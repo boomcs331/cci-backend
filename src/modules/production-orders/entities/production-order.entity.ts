@@ -1,5 +1,15 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+} from 'typeorm';
 import { Product } from '../../products/entities/product.entity';
+import { ProductionPlan } from '../../production-plans/entities/production-plan.entity';
+import { ProductionPlanItem } from '../../production-plans/entities/production-plan-item.entity';
 import { ProductionLot } from './production-lot.entity';
 
 @Entity('production_orders')
@@ -28,6 +38,12 @@ export class ProductionOrder {
   @Column({ type: 'text', nullable: true })
   remarks: string;
 
+  @Column({ name: 'plan_id', nullable: true })
+  planId?: number;
+
+  @Column({ name: 'plan_item_id', nullable: true })
+  planItemId?: number;
+
   @CreateDateColumn({ name: 'create_date' })
   createDate: Date;
 
@@ -37,6 +53,14 @@ export class ProductionOrder {
   @ManyToOne(() => Product)
   @JoinColumn({ name: 'product_id' })
   product: Product;
+
+  @ManyToOne(() => ProductionPlan, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'plan_id' })
+  plan?: ProductionPlan;
+
+  @ManyToOne(() => ProductionPlanItem, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'plan_item_id' })
+  planItem?: ProductionPlanItem;
 
   @OneToMany(() => ProductionLot, lot => lot.order)
   lots: ProductionLot[];

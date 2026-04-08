@@ -1,6 +1,12 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { ProductionPlansService } from './production-plans.service';
-import { CreateProductionPlanDto, UpdateProductionPlanDto, AddPlanItemDto, UpdatePlanItemDto } from './dto';
+import {
+  CreateProductionPlanDto,
+  UpdateProductionPlanDto,
+  AddPlanItemDto,
+  UpdatePlanItemDto,
+  GenerateProductQrOrdersFromPlanDto,
+} from './dto';
 
 @Controller('production-plans')
 export class ProductionPlansController {
@@ -73,6 +79,17 @@ export class ProductionPlansController {
   reserve(@Param('id') id: string, @Request() req) {
     const username = req.user?.username || 'system';
     return this.service.reserveMaterials(+id, username);
+  }
+
+  /** สร้าง Production Order + QR lots (เฉพาะแผนสถานะยืนยันแล้ว): จำนวน QR = ceil(quantity / lotSize) */
+  @Post(':id/generate-product-qr-orders')
+  generateProductQrOrders(
+    @Param('id') id: string,
+    @Body() dto: GenerateProductQrOrdersFromPlanDto,
+    @Request() req,
+  ) {
+    const username = req.user?.username || 'system';
+    return this.service.generateProductQrOrdersFromPlan(+id, dto, username);
   }
 
   @Post(':id/confirm')

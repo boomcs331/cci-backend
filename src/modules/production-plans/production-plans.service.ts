@@ -4,7 +4,15 @@ import { Repository, DataSource, MoreThan, In } from 'typeorm';
 import { ProductionPlan, ProductionPlanItem, MaterialReservation, PlanStatus } from './entities';
 import { Product, ProductBom } from '../products/entities';
 import { MaterialsStock } from '../materials/entities/materials-stock.entity';
-import { CreateProductionPlanDto, UpdateProductionPlanDto, AddPlanItemDto, UpdatePlanItemDto } from './dto';
+import {
+  CreateProductionPlanDto,
+  UpdateProductionPlanDto,
+  AddPlanItemDto,
+  UpdatePlanItemDto,
+  GenerateProductQrOrdersFromPlanDto,
+} from './dto';
+import { ProductionOrdersService } from '../production-orders/production-orders.service';
+import { CreateProductionOrderDto } from '../production-orders/dto';
 
 @Injectable()
 export class ProductionPlansService {
@@ -22,6 +30,7 @@ export class ProductionPlansService {
     @InjectRepository(MaterialsStock)
     private stockRepo: Repository<MaterialsStock>,
     private dataSource: DataSource,
+    private productionOrdersService: ProductionOrdersService,
   ) {}
 
   async create(dto: CreateProductionPlanDto, username: string) {
@@ -61,6 +70,101 @@ export class ProductionPlansService {
 
     if (!plan) throw new NotFoundException('ไม่พบแผนการผลิต');
     return plan;
+  }
+
+  /**
+   * สร้าง Production Order + รายการ QR (production_lots) ตามจำนวน ceil(quantity / lotSize) ต่อรายการในแผน
+   * lotSize: defaultLotSize หรือ lotSizeByProductId[productId] หรือ products.lot_size หรือ 100
+   * อนุญาตเฉพาะแผนที่ยืนยันแล้ว (confirmed) เท่านั้น
+   */
+  async generateProductQrOrdersFromPlan(
+    planId: number,
+    dto: GenerateProductQrOrdersFromPlanDto,
+    username: string,
+  ) {
+    const plan = await this.findOne(planId);
+    if (plan.status !== PlanStatus.CONFIRMED) {
+      throw new BadRequestException(
+        'สร้างคำสั่งผลิต / QR ได้เมื่อแผนอยู่ในสถานะยืนยันแล้ว (confirmed) เท่านั้น — ให้ยืนยันแผนก่อน',
+      );
+    }
+    if (!plan.items?.length) {
+      throw new BadRequestException('แผนไม่มีรายการสินค้า');
+    }
+
+    const results: Array<{
+      planItemId: number;
+      productId: number;
+      quantity: number;
+      lotSize: number;
+      totalQrCodes: number;
+      productionOrder: NonNullable<Awaited<ReturnType<ProductionOrdersService['findOrderWithLots']>>>;
+    }> = [];
+
+    for (const item of plan.items) {
+      if (dto.planItemIds?.length && !dto.planItemIds.includes(item.id)) {
+        continue;
+      }
+
+      let lotSizeOpt: number | undefined = dto.defaultLotSize;
+      if (lotSizeOpt == null && dto.lotSizeByProductId) {
+        const fromMap = dto.lotSizeByProductId[String(item.productId)];
+        if (fromMap != null && fromMap > 0) {
+          lotSizeOpt = fromMap;
+        }
+      }
+
+      const qty = Number(item.quantity);
+      if (!(qty > 0)) {
+        continue;
+      }
+
+      const createDto: CreateProductionOrderDto = {
+        productId: item.productId,
+        orderQuantity: qty,
+        planId: plan.id,
+        planItemId: item.id,
+        remarks: item.remarks?.trim() || `แผน ${plan.planCode}`,
+      };
+      if (lotSizeOpt != null && lotSizeOpt > 0) {
+        createDto.lotSize = lotSizeOpt;
+      }
+
+      const productionOrder = await this.productionOrdersService.createProductionOrder(
+        createDto,
+        username,
+      );
+
+      results.push({
+        planItemId: item.id,
+        productId: item.productId,
+        quantity: qty,
+        lotSize: Number(productionOrder.lotSize),
+        totalQrCodes: productionOrder.totalLots,
+        productionOrder,
+      });
+    }
+
+    if (!results.length) {
+      throw new BadRequestException(
+        'ไม่มีรายการที่สร้างได้ — ตรวจสอบ planItemIds และจำนวนในแต่ละรายการ',
+      );
+    }
+
+    return {
+      planId: plan.id,
+      planCode: plan.planCode,
+      summary: results.map((r) => ({
+        planItemId: r.planItemId,
+        productId: r.productId,
+        quantity: r.quantity,
+        lotSize: r.lotSize,
+        totalQrCodes: r.totalQrCodes,
+        productionOrderId: r.productionOrder.id,
+        orderNo: r.productionOrder.orderNo,
+      })),
+      orders: results.map((r) => r.productionOrder),
+    };
   }
 
   async update(id: number, dto: UpdateProductionPlanDto, username: string) {

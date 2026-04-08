@@ -1,0 +1,684 @@
+openapi: 3.0.3
+info:
+  title: CCI Backend — Masters API
+  description: |
+    Master data ภายใต้ `/masters` และ `/masters/products`.
+    Import คู่กับ `cci-backend.openapi.yaml` ใน Apidog (นำเข้าทั้งสองไฟล์เข้าโปรเจกต์เดียวกัน) หรือ merge paths เข้าไฟล์เดียว
+  version: 0.0.1
+
+servers:
+  - url: http://localhost:{port}
+    variables:
+      port:
+        default: "3006"
+
+tags:
+  - name: Masters — Products
+  - name: Masters — Materials
+
+security:
+  - bearerAuth: []
+
+paths:
+  /masters/products/locations:
+    post:
+      tags: [Masters — Products]
+      summary: Create location
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List locations (paginated)
+      responses: { "200": { description: OK } }
+
+  /masters/products/locations/all:
+    get:
+      tags: [Masters — Products]
+      summary: All locations
+      responses: { "200": { description: OK } }
+
+  /masters/products/locations/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get location
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Products]
+      summary: Update location
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete location
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/products/customers:
+    post:
+      tags: [Masters — Products]
+      summary: Create customer
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List customers
+      responses: { "200": { description: OK } }
+
+  /masters/products/customers/all:
+    get:
+      tags: [Masters — Products]
+      summary: All customers
+      responses: { "200": { description: OK } }
+
+  /masters/products/customers/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get customer
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Products]
+      summary: Update customer
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete customer
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/products/types:
+    post:
+      tags: [Masters — Products]
+      summary: Create product type
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List types
+      responses: { "200": { description: OK } }
+
+  /masters/products/types/all:
+    get:
+      tags: [Masters — Products]
+      summary: All types
+      responses: { "200": { description: OK } }
+
+  /masters/products/types/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Products]
+      summary: Update type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/products/models:
+    post:
+      tags: [Masters — Products]
+      summary: Create product model
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List models
+      responses: { "200": { description: OK } }
+
+  /masters/products/models/all:
+    get:
+      tags: [Masters — Products]
+      summary: All models
+      responses: { "200": { description: OK } }
+
+  /masters/products/models/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get model
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Products]
+      summary: Update model
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete model
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/products/delivery-types:
+    post:
+      tags: [Masters — Products]
+      summary: Create delivery type
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List delivery types
+      responses: { "200": { description: OK } }
+
+  /masters/products/delivery-types/all:
+    get:
+      tags: [Masters — Products]
+      summary: All delivery types
+      responses: { "200": { description: OK } }
+
+  /masters/products/delivery-types/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get delivery type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Products]
+      summary: Update delivery type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete delivery type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/products/units:
+    post:
+      tags: [Masters — Products]
+      summary: Create unit
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List units
+      responses: { "200": { description: OK } }
+
+  /masters/products/units/all:
+    get:
+      tags: [Masters — Products]
+      summary: All units
+      responses: { "200": { description: OK } }
+
+  /masters/products/units/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get unit
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Products]
+      summary: Update unit
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete unit
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/products/loading-points:
+    post:
+      tags: [Masters — Products]
+      summary: Create loading point
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List loading points
+      responses: { "200": { description: OK } }
+
+  /masters/products/loading-points/all:
+    get:
+      tags: [Masters — Products]
+      summary: All loading points
+      responses: { "200": { description: OK } }
+
+  /masters/products/loading-points/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get loading point
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Products]
+      summary: Update loading point
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete loading point
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/products/process-lines:
+    post:
+      tags: [Masters — Products]
+      summary: Create process line
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Products]
+      summary: List process lines
+      responses: { "200": { description: OK } }
+
+  /masters/products/process-lines/all:
+    get:
+      tags: [Masters — Products]
+      summary: All process lines
+      responses: { "200": { description: OK } }
+
+  /masters/products/process-lines/{id}:
+    get:
+      tags: [Masters — Products]
+      summary: Get process line
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Products]
+      summary: Update process line
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Products]
+      summary: Delete process line
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/models:
+    post:
+      tags: [Masters — Materials]
+      summary: Create material model
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List models
+      responses: { "200": { description: OK } }
+
+  /masters/models/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All models
+      responses: { "200": { description: OK } }
+
+  /masters/models/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get model
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Materials]
+      summary: Update model
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete model
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/delivery-types:
+    post:
+      tags: [Masters — Materials]
+      summary: Create delivery type
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List delivery types
+      responses: { "200": { description: OK } }
+
+  /masters/delivery-types/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All delivery types
+      responses: { "200": { description: OK } }
+
+  /masters/delivery-types/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get delivery type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Materials]
+      summary: Update delivery type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete delivery type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/units:
+    post:
+      tags: [Masters — Materials]
+      summary: Create unit
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List units
+      responses: { "200": { description: OK } }
+
+  /masters/units/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All units
+      responses: { "200": { description: OK } }
+
+  /masters/units/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get unit
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Materials]
+      summary: Update unit
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete unit
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/loading-points:
+    post:
+      tags: [Masters — Materials]
+      summary: Create loading point
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List loading points
+      responses: { "200": { description: OK } }
+
+  /masters/loading-points/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All loading points
+      responses: { "200": { description: OK } }
+
+  /masters/loading-points/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get loading point
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Materials]
+      summary: Update loading point
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete loading point
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/process-lines:
+    post:
+      tags: [Masters — Materials]
+      summary: Create process line
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List process lines
+      responses: { "200": { description: OK } }
+
+  /masters/process-lines/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All process lines
+      responses: { "200": { description: OK } }
+
+  /masters/process-lines/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get process line
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    put:
+      tags: [Masters — Materials]
+      summary: Update process line
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete process line
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/suppliers:
+    post:
+      tags: [Masters — Materials]
+      summary: Create supplier
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List suppliers
+      responses: { "200": { description: OK } }
+
+  /masters/suppliers/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All suppliers
+      responses: { "200": { description: OK } }
+
+  /masters/suppliers/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get supplier
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Materials]
+      summary: Update supplier
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete supplier
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/materials-types:
+    post:
+      tags: [Masters — Materials]
+      summary: Create material type
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List material types
+      responses: { "200": { description: OK } }
+
+  /masters/materials-types/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All material types
+      responses: { "200": { description: OK } }
+
+  /masters/materials-types/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get material type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Materials]
+      summary: Update material type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete material type
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+  /masters/materials-locations:
+    post:
+      tags: [Masters — Materials]
+      summary: Create material location
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Masters — Materials]
+      summary: List material locations
+      responses: { "200": { description: OK } }
+
+  /masters/materials-locations/all:
+    get:
+      tags: [Masters — Materials]
+      summary: All material locations
+      responses: { "200": { description: OK } }
+
+  /masters/materials-locations/{id}:
+    get:
+      tags: [Masters — Materials]
+      summary: Get material location
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Masters — Materials]
+      summary: Update material location
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Masters — Materials]
+      summary: Delete material location
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
