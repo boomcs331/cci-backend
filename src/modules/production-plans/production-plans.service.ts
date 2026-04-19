@@ -1494,7 +1494,7 @@ export class ProductionPlansService {
       });
     }
 
-    const reservations = await this.dataSource.query(
+    let reservations = await this.dataSource.query(
       `SELECT 
         mr.material_id,
         m.mat_code as material_code,
@@ -1512,6 +1512,30 @@ export class ProductionPlansService {
       ORDER BY m.mat_code, mr.receive_date`,
       [planId],
     );
+
+    /** หลัง confirm/issue แถว material_reservations ถูกลบ — ดึง Lot/QR จากงานจ่ายจริงสำหรับใบจัด */
+    if (!reservations.length && plan.status === PlanStatus.CONFIRMED) {
+      const remark = `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`;
+      reservations = await this.dataSource.query(
+        `SELECT 
+          mis.material_id,
+          m.mat_code as material_code,
+          m.mat_name as material_name,
+          mil.quantity as reserved_quantity,
+          mrl.lot_no as lot_number,
+          mrl.lot_pd_no,
+          COALESCE(NULLIF(TRIM(mil.qr_code), ''), mrl.qr_code) as qr_code,
+          mrl.income_supplire_date as receive_date,
+          mil.create_date
+        FROM material_issuing mis
+        INNER JOIN material_issuing_lots mil ON mil.issuing_id = mis.id
+        INNER JOIN material_receiving_lots mrl ON mrl.id = mil.lot_id
+        INNER JOIN master.materials m ON m.id = mis.material_id
+        WHERE mis.remark = $1
+        ORDER BY m.mat_code, mil.create_date, mrl.lot_no`,
+        [remark],
+      );
+    }
 
     return {
       id: plan.id,
