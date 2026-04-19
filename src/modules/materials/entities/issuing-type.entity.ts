@@ -1,6 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
-@Entity('issuing_types')
+@Entity({ schema: 'master', name: 'issuing_types' })
 export class IssuingType {
   @PrimaryGeneratedColumn()
   id: number;

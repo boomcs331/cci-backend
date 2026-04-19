@@ -1,7 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Material } from './material.entity';
 
-@Entity('process_lines')
+@Entity({ schema: 'master', name: 'process_lines' })
 export class ProcessLine {
   @PrimaryGeneratedColumn()
   id: number;
@@ -24,6 +31,6 @@ export class ProcessLine {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
-  @OneToMany(() => Material, material => material.processLine)
+  @OneToMany(() => Material, (material) => material.processLine)
   materials: Material[];
 }

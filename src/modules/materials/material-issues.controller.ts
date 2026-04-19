@@ -1,6 +1,18 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  ParseIntPipe,
+  Query,
+} from '@nestjs/common';
 import { MaterialIssuesService } from './material-issues.service';
-import { CreateManualIssueDto, CreateProductionIssueDto, PreviewProductionIssueDto } from './dto/material-issue.dto';
+import {
+  CreateManualIssueDto,
+  CreateProductionIssueDto,
+  PreviewProductionIssueDto,
+} from './dto/material-issue.dto';
 import { ResponseHelper } from '@app/common';
 
 @Controller('material-issues')
@@ -16,7 +28,10 @@ export class MaterialIssuesController {
   @Post('production')
   async createProductionIssue(@Body() dto: CreateProductionIssueDto) {
     const issue = await this.service.createProductionIssue(dto, 'admin');
-    return ResponseHelper.success(issue, 'Production material issued successfully');
+    return ResponseHelper.success(
+      issue,
+      'Production material issued successfully',
+    );
   }
 
   @Post('production/preview')
@@ -31,12 +46,24 @@ export class MaterialIssuesController {
     @Query('limit') limit: string = '10',
     @Query('issueType') issueType?: string,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string
+    @Query('endDate') endDate?: string,
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
-    const result = await this.service.findAll(pageNum, limitNum, issueType, startDate, endDate);
-    return ResponseHelper.paginated(result.data, result.page, result.limit, result.total, 'Material issues retrieved');
+    const result = await this.service.findAll(
+      pageNum,
+      limitNum,
+      issueType,
+      startDate,
+      endDate,
+    );
+    return ResponseHelper.paginated(
+      result.data,
+      result.page,
+      result.limit,
+      result.total,
+      'Material issues retrieved',
+    );
   }
 
   @Get(':id')

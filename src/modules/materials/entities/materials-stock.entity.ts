@@ -1,4 +1,11 @@
-import { Entity, PrimaryColumn, Column, UpdateDateColumn, OneToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  UpdateDateColumn,
+  OneToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Material } from './material.entity';
 
 @Entity('materials_stock')
@@ -18,7 +25,7 @@ export class MaterialsStock {
   @UpdateDateColumn({ name: 'update_date' })
   updateDate: Date;
 
-  @OneToOne(() => Material, material => material.stock)
+  @OneToOne(() => Material, (material) => material.stock)
   @JoinColumn({ name: 'material_id' })
   material: Material;
 }

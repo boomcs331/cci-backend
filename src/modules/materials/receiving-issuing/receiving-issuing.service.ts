@@ -1,12 +1,46 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { MaterialReceiving, MaterialReceivingLot, MaterialIssuing, MaterialIssuingLot, MaterialTransaction, MaterialIssuingDocument } from './entities';
-import { Material, MaterialsStock, IssuingType, MaterialIssue, MaterialIssueItem, MaterialIssueDocument } from '../entities';
+import {
+  MaterialReceiving,
+  MaterialReceivingLot,
+  MaterialIssuing,
+  MaterialIssuingLot,
+  MaterialTransaction,
+  MaterialIssuingDocument,
+} from './entities';
+import {
+  Material,
+  MaterialsStock,
+  IssuingType,
+  MaterialIssue,
+  MaterialIssueItem,
+  MaterialIssueDocument,
+} from '../entities';
 import { Product } from '../../products/entities/product.entity';
 import { ProductBom } from '../../products/entities/product-bom.entity';
-import { CreateReceivingDto, CreateIssuingDto, CreateIssuingWithDocumentDto, CreateIssuingFromBomDto } from './dto';
-import { CreateManualIssueDto, CreateProductionIssueDto, PreviewProductionIssueDto } from '../dto/material-issue.dto';
+import {
+  CreateReceivingDto,
+  CreateIssuingDto,
+  CreateIssuingWithDocumentDto,
+  CreateIssuingFromBomDto,
+} from './dto';
+import {
+  CreateManualIssueDto,
+  CreateProductionIssueDto,
+  PreviewProductionIssueDto,
+} from '../dto/material-issue.dto';
+import { buildInventoryStyleQrCode } from '@app/common';
+import {
+  QrScanAction,
+  QrScanDomain,
+} from '../../../core/audit/entities/qr-scan-log.entity';
+import { QrScanLogService } from '../../../core/audit/services/qr-scan-log.service';
 
 @Injectable()
 export class ReceivingIssuingService {
@@ -40,14 +74,15 @@ export class ReceivingIssuingService {
     @InjectRepository(ProductBom)
     private bomRepo: Repository<ProductBom>,
     private dataSource: DataSource,
+    private readonly qrScanLogService: QrScanLogService,
   ) {}
 
   async createReceiving(dto: CreateReceivingDto): Promise<MaterialReceiving> {
-    return await this.dataSource.transaction(async manager => {
+    return await this.dataSource.transaction(async (manager) => {
       // Validate material
-      const material = await manager.findOne(Material, { 
+      const material = await manager.findOne(Material, {
         where: { id: dto.materialId },
-        relations: ['unitMaster']
+        relations: ['unitMaster'],
       });
       if (!material) throw new NotFoundException('Material not found');
 
@@ -55,7 +90,8 @@ export class ReceivingIssuingService {
       const lotSize = material.lotSize || 1;
       const numberOfLots = Math.ceil(dto.totalQuantity / lotSize);
       const quantityPerLot = lotSize;
-      const lastLotQuantity = dto.totalQuantity - (quantityPerLot * (numberOfLots - 1));
+      const lastLotQuantity =
+        dto.totalQuantity - quantityPerLot * (numberOfLots - 1);
 
       // Generate receiving number
       const count = await manager.count(MaterialReceiving);
@@ -72,26 +108,36 @@ export class ReceivingIssuingService {
         poNo: dto.poNo,
         remark: dto.remark,
         status: 'ACTIVE',
-        createBy: dto.createBy ?? 'system'
+        createBy: dto.createBy ?? 'system',
       });
       const savedReceiving = await manager.save(receiving);
 
       // Create lots automatically
       const today = new Date();
-      const pcDateStr = today.getFullYear() + 
-                        String(today.getMonth() + 1).padStart(2, '0') + 
-                        String(today.getDate()).padStart(2, '0');
-      
+      const pcDateStr =
+        today.getFullYear() +
+        String(today.getMonth() + 1).padStart(2, '0') +
+        String(today.getDate()).padStart(2, '0');
+
       // Use mfgDate for PD lot, fallback to today if not provided
       const pdDate = dto.mfgDate ? new Date(dto.mfgDate) : today;
-      const pdDateStr = pdDate.getFullYear() + 
-                        String(pdDate.getMonth() + 1).padStart(2, '0') + 
-                        String(pdDate.getDate()).padStart(2, '0');
-      
+      const pdDateStr =
+        pdDate.getFullYear() +
+        String(pdDate.getMonth() + 1).padStart(2, '0') +
+        String(pdDate.getDate()).padStart(2, '0');
+
       // Count existing PC lots for today
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-      
+      const startOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+      );
+      const endOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate() + 1,
+      );
+
       const existingPcCount = await manager
         .createQueryBuilder(MaterialReceivingLot, 'lot')
         .where('lot.lotNo LIKE :prefix', { prefix: `PC${pcDateStr}-%` })
@@ -100,9 +146,17 @@ export class ReceivingIssuingService {
         .getCount();
 
       // Count existing PD lots for mfgDate
-      const pdStartOfDay = new Date(pdDate.getFullYear(), pdDate.getMonth(), pdDate.getDate());
-      const pdEndOfDay = new Date(pdDate.getFullYear(), pdDate.getMonth(), pdDate.getDate() + 1);
-      
+      const pdStartOfDay = new Date(
+        pdDate.getFullYear(),
+        pdDate.getMonth(),
+        pdDate.getDate(),
+      );
+      const pdEndOfDay = new Date(
+        pdDate.getFullYear(),
+        pdDate.getMonth(),
+        pdDate.getDate() + 1,
+      );
+
       const existingPdCount = await manager
         .createQueryBuilder(MaterialReceivingLot, 'lot')
         .where('lot.lotPdNo LIKE :prefix', { prefix: `PD${pdDateStr}-%` })
@@ -115,8 +169,9 @@ export class ReceivingIssuingService {
         const pdRunNo = String(existingPdCount + i + 1).padStart(3, '0');
         const lotNo = `PC${pcDateStr}-${pcRunNo}`;
         const lotPdNo = `PD${pdDateStr}-${pdRunNo}`;
-        const qrCode = `QR-${lotNo}-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-        const lotQuantity = i === numberOfLots - 1 ? lastLotQuantity : quantityPerLot;
+        const qrCode = buildInventoryStyleQrCode(lotNo);
+        const lotQuantity =
+          i === numberOfLots - 1 ? lastLotQuantity : quantityPerLot;
 
         const lot = manager.create(MaterialReceivingLot, {
           receivingId: savedReceiving.id,
@@ -131,7 +186,7 @@ export class ReceivingIssuingService {
           expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : undefined,
           incomeSupplireDate: dto.mfgDate ? new Date(dto.mfgDate) : undefined,
           status: 'AVAILABLE',
-          createBy: dto.createBy ?? 'system'
+          createBy: dto.createBy ?? 'system',
         });
         await manager.save(lot);
 
@@ -148,13 +203,15 @@ export class ReceivingIssuingService {
           remainingQuantity: lotQuantity,
           referenceNo: receivingNo,
           remark: dto.remark,
-          createBy: dto.createBy ?? 'system'
+          createBy: dto.createBy ?? 'system',
         });
         await manager.save(transaction);
       }
 
       // Update stock
-      let stock = await manager.findOne(MaterialsStock, { where: { materialId: dto.materialId } });
+      let stock = await manager.findOne(MaterialsStock, {
+        where: { materialId: dto.materialId },
+      });
       if (stock) {
         stock.totalQty += dto.totalQuantity;
         stock.availableQty += dto.totalQuantity;
@@ -164,41 +221,52 @@ export class ReceivingIssuingService {
           materialId: dto.materialId,
           totalQty: dto.totalQuantity,
           availableQty: dto.totalQuantity,
-          reservedQty: 0
+          reservedQty: 0,
         });
         await manager.save(stock);
       }
 
       return (await manager.findOne(MaterialReceiving, {
         where: { id: savedReceiving.id },
-        relations: ['material', 'supplier', 'lots']
+        relations: ['material', 'supplier', 'lots'],
       }))!;
     });
   }
 
-  async createIssuingWithDocument(dto: CreateIssuingWithDocumentDto): Promise<MaterialIssuing> {
-    return await this.dataSource.transaction(async manager => {
-      const material = await manager.findOne(Material, { 
+  async createIssuingWithDocument(
+    dto: CreateIssuingWithDocumentDto,
+  ): Promise<MaterialIssuing> {
+    return await this.dataSource.transaction(async (manager) => {
+      const material = await manager.findOne(Material, {
         where: { id: dto.materialId },
-        relations: ['unitMaster']
+        relations: ['unitMaster'],
       });
       if (!material) throw new NotFoundException('Material not found');
 
-      const issuingType = await manager.findOne(IssuingType, { where: { id: dto.issuingTypeId } });
+      const issuingType = await manager.findOne(IssuingType, {
+        where: { id: dto.issuingTypeId },
+      });
       if (!issuingType) throw new NotFoundException('Issuing type not found');
 
       const availableLots = await manager
         .createQueryBuilder(MaterialReceivingLot, 'lot')
         .where('lot.materialId = :materialId', { materialId: dto.materialId })
-        .andWhere('lot.status IN (:...statuses)', { statuses: ['AVAILABLE', 'PARTIAL_USED'] })
+        .andWhere('lot.status IN (:...statuses)', {
+          statuses: ['AVAILABLE', 'PARTIAL_USED'],
+        })
         .andWhere('lot.remainingQuantity > 0')
         .orderBy('lot.createDate', 'ASC')
         .addOrderBy('lot.id', 'ASC')
         .getMany();
 
-      const totalAvailable = availableLots.reduce((sum, lot) => sum + Number(lot.remainingQuantity), 0);
+      const totalAvailable = availableLots.reduce(
+        (sum, lot) => sum + Number(lot.remainingQuantity),
+        0,
+      );
       if (totalAvailable < dto.quantity) {
-        throw new ConflictException(`Insufficient stock. Available: ${totalAvailable}, Requested: ${dto.quantity}`);
+        throw new ConflictException(
+          `Insufficient stock. Available: ${totalAvailable}, Requested: ${dto.quantity}`,
+        );
       }
 
       const count = await manager.count(MaterialIssuing);
@@ -216,7 +284,7 @@ export class ReceivingIssuingService {
         workOrderNo: dto.workOrderNo,
         remark: dto.remark,
         status: 'COMPLETED',
-        createBy: dto.createBy ?? 'system'
+        createBy: dto.createBy ?? 'system',
       });
       const savedIssuing = await manager.save(issuing);
 
@@ -225,18 +293,22 @@ export class ReceivingIssuingService {
       for (const lot of availableLots) {
         if (remainingToIssue <= 0) break;
 
-        const issueFromThisLot = Math.min(Number(lot.remainingQuantity), remainingToIssue);
+        const issueFromThisLot = Math.min(
+          Number(lot.remainingQuantity),
+          remainingToIssue,
+        );
 
         const issuingLot = manager.create(MaterialIssuingLot, {
           issuingId: savedIssuing.id,
           lotId: lot.id,
           qrCode: lot.qrCode,
           quantity: issueFromThisLot,
-          unit: material.unitMaster?.code || 'PCS'
+          unit: material.unitMaster?.code || 'PCS',
         });
         await manager.save(issuingLot);
 
-        lot.remainingQuantity = Number(lot.remainingQuantity) - issueFromThisLot;
+        lot.remainingQuantity =
+          Number(lot.remainingQuantity) - issueFromThisLot;
         if (lot.remainingQuantity === 0) {
           lot.status = 'USED_UP';
         } else {
@@ -256,7 +328,7 @@ export class ReceivingIssuingService {
           remainingQuantity: lot.remainingQuantity,
           referenceNo: issuingNo,
           remark: dto.remark || '',
-          createBy: dto.createBy ?? 'system'
+          createBy: dto.createBy ?? 'system',
         });
         await manager.save(transaction);
 
@@ -271,13 +343,15 @@ export class ReceivingIssuingService {
             filePath: doc.filePath,
             fileType: doc.fileType,
             fileSize: doc.fileSize,
-            createBy: dto.createBy ?? 'system'
+            createBy: dto.createBy ?? 'system',
           });
           await manager.save(document);
         }
       }
 
-      const stock = await manager.findOne(MaterialsStock, { where: { materialId: dto.materialId } });
+      const stock = await manager.findOne(MaterialsStock, {
+        where: { materialId: dto.materialId },
+      });
       if (stock) {
         stock.totalQty -= dto.quantity;
         stock.availableQty -= dto.quantity;
@@ -286,12 +360,18 @@ export class ReceivingIssuingService {
 
       return (await manager.findOne(MaterialIssuing, {
         where: { id: savedIssuing.id },
-        relations: ['material', 'issuingTypeMaster', 'lots', 'lots.lot', 'documents']
+        relations: [
+          'material',
+          'issuingTypeMaster',
+          'lots',
+          'lots.lot',
+          'documents',
+        ],
       }))!;
     });
   }
 
-  async getLotByQrCode(qrCode: string): Promise<any> {
+  async getLotByQrCode(qrCode: string, userId?: string): Promise<any> {
     const lot = await this.receivingLotRepository
       .createQueryBuilder('lot')
       .leftJoinAndSelect('lot.receiving', 'receiving')
@@ -301,17 +381,56 @@ export class ReceivingIssuingService {
       .where('lot.qrCode = :qrCode', { qrCode })
       .getOne();
 
-    if (!lot) throw new NotFoundException('QR Code not found');
+    if (!lot) {
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.MATERIAL,
+        action: QrScanAction.MATERIAL_LOT_LOOKUP,
+        qrCode,
+        userId: userId ?? null,
+        isSuccess: false,
+        errorMessage: 'QR Code not found',
+      });
+      throw new NotFoundException('QR Code not found');
+    }
+
+    await this.qrScanLogService.logEvent({
+      domain: QrScanDomain.MATERIAL,
+      action: QrScanAction.MATERIAL_LOT_LOOKUP,
+      qrCode,
+      userId: userId ?? null,
+      isSuccess: true,
+      metadata: {
+        lotNo: lot.lotNo,
+        materialId: lot.materialId,
+        lotStatus: lot.status,
+      },
+    });
 
     return lot;
   }
 
-  async getLotTransactions(qrCode: string): Promise<MaterialTransaction[]> {
-    return await this.transactionRepository.find({
+  async getLotTransactions(
+    qrCode: string,
+    userId?: string,
+  ): Promise<MaterialTransaction[]> {
+    const rows = await this.transactionRepository.find({
       where: { qrCode },
       relations: ['material'],
-      order: { createDate: 'DESC' }
+      order: { createDate: 'DESC' },
     });
+
+    await this.qrScanLogService.logEvent({
+      domain: QrScanDomain.MATERIAL,
+      action: QrScanAction.MATERIAL_TX_LOOKUP,
+      qrCode,
+      userId: userId ?? null,
+      isSuccess: true,
+      metadata: {
+        transactionCount: rows.length,
+      },
+    });
+
+    return rows;
   }
 
   async getAllLots(
@@ -319,7 +438,7 @@ export class ReceivingIssuingService {
     limit: number = 10,
     materialId?: number,
     status?: string,
-    locationId?: number
+    locationId?: number,
   ): Promise<{
     lots: MaterialReceivingLot[];
     total: number;
@@ -344,8 +463,8 @@ export class ReceivingIssuingService {
       queryBuilder.andWhere('lot.status = :status', { status });
     } else {
       // Default: show only available and partial used
-      queryBuilder.andWhere('lot.status IN (:...statuses)', { 
-        statuses: ['AVAILABLE', 'PARTIAL_USED'] 
+      queryBuilder.andWhere('lot.status IN (:...statuses)', {
+        statuses: ['AVAILABLE', 'PARTIAL_USED'],
       });
     }
 
@@ -370,7 +489,7 @@ export class ReceivingIssuingService {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -382,7 +501,7 @@ export class ReceivingIssuingService {
     sortOrder: string = 'DESC',
     materialId?: number,
     supplierId?: number,
-    status?: string
+    status?: string,
   ): Promise<{
     receivings: MaterialReceiving[];
     total: number;
@@ -404,23 +523,33 @@ export class ReceivingIssuingService {
 
     // Material filter
     if (materialId) {
-      queryBuilder.andWhere('receiving.materialId = :materialId', { materialId });
+      queryBuilder.andWhere('receiving.materialId = :materialId', {
+        materialId,
+      });
     }
 
     // Supplier filter
     if (supplierId) {
-      queryBuilder.andWhere('receiving.supplierId = :supplierId', { supplierId });
+      queryBuilder.andWhere('receiving.supplierId = :supplierId', {
+        supplierId,
+      });
     }
 
     // Search filter
     if (search) {
       queryBuilder.andWhere(
         '(receiving.receivingNo ILIKE :search OR receiving.poNo ILIKE :search OR material.matCode ILIKE :search OR material.matName ILIKE :search)',
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
 
-    const validSortColumns = ['id', 'receivingNo', 'receivingDate', 'totalQuantity', 'createDate'];
+    const validSortColumns = [
+      'id',
+      'receivingNo',
+      'receivingDate',
+      'totalQuantity',
+      'createDate',
+    ];
     const sortColumn = validSortColumns.includes(sortBy) ? sortBy : 'id';
     const order = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
@@ -437,7 +566,7 @@ export class ReceivingIssuingService {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -450,7 +579,7 @@ export class ReceivingIssuingService {
     materialId?: number,
     department?: string,
     status?: string,
-    issuingType?: string
+    issuingType?: string,
   ): Promise<{
     issuings: MaterialIssuing[];
     total: number;
@@ -476,7 +605,9 @@ export class ReceivingIssuingService {
 
     // Department filter
     if (department) {
-      queryBuilder.andWhere('issuing.department ILIKE :department', { department: `%${department}%` });
+      queryBuilder.andWhere('issuing.department ILIKE :department', {
+        department: `%${department}%`,
+      });
     }
 
     // Issuing type filter - removed (column doesn't exist)
@@ -488,11 +619,17 @@ export class ReceivingIssuingService {
     if (search) {
       queryBuilder.andWhere(
         '(issuing.issuingNo ILIKE :search OR issuing.workOrderNo ILIKE :search OR material.matCode ILIKE :search OR material.matName ILIKE :search OR issuing.department ILIKE :search)',
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
 
-    const validSortColumns = ['id', 'issuingNo', 'issuingDate', 'totalQuantity', 'createDate'];
+    const validSortColumns = [
+      'id',
+      'issuingNo',
+      'issuingDate',
+      'totalQuantity',
+      'createDate',
+    ];
     const sortColumn = validSortColumns.includes(sortBy) ? sortBy : 'id';
     const order = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
@@ -509,35 +646,41 @@ export class ReceivingIssuingService {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
     };
   }
 
   async getAllIssuingTypes(): Promise<IssuingType[]> {
-    return await this.issuingTypeRepository.find({ 
+    return await this.issuingTypeRepository.find({
       where: { active: true },
-      order: { code: 'ASC' }
+      order: { code: 'ASC' },
     });
   }
 
   async getIssuingTypeById(id: number): Promise<IssuingType> {
-    const issuingType = await this.issuingTypeRepository.findOne({ where: { id } });
+    const issuingType = await this.issuingTypeRepository.findOne({
+      where: { id },
+    });
     if (!issuingType) throw new NotFoundException('Issuing type not found');
     return issuingType;
   }
 
-  async createIssuingFromBom(dto: CreateIssuingFromBomDto): Promise<MaterialIssuing[]> {
-    return await this.dataSource.transaction(async manager => {
+  async createIssuingFromBom(
+    dto: CreateIssuingFromBomDto,
+  ): Promise<MaterialIssuing[]> {
+    return await this.dataSource.transaction(async (manager) => {
       const product = await manager.findOne(Product, {
         where: { id: dto.productId },
-        relations: ['boms', 'boms.material', 'boms.material.unitMaster']
+        relations: ['boms', 'boms.material', 'boms.material.unitMaster'],
       });
       if (!product) throw new NotFoundException('Product not found');
       if (!product.boms || product.boms.length === 0) {
         throw new NotFoundException('Product BOM not found');
       }
 
-      const issuingType = await manager.findOne(IssuingType, { where: { id: dto.issuingTypeId } });
+      const issuingType = await manager.findOne(IssuingType, {
+        where: { id: dto.issuingTypeId },
+      });
       if (!issuingType) throw new NotFoundException('Issuing type not found');
 
       // Create material_issue record
@@ -557,22 +700,27 @@ export class ReceivingIssuingService {
 
       const issuings: MaterialIssuing[] = [];
 
-      for (const bom of product.boms.filter(b => b.isActive)) {
+      for (const bom of product.boms.filter((b) => b.isActive)) {
         const requiredQty = Number(bom.quantityPerUnit) * dto.quantity;
 
         const availableLots = await manager
           .createQueryBuilder(MaterialReceivingLot, 'lot')
           .where('lot.materialId = :materialId', { materialId: bom.materialId })
-          .andWhere('lot.status IN (:...statuses)', { statuses: ['AVAILABLE', 'PARTIAL_USED'] })
+          .andWhere('lot.status IN (:...statuses)', {
+            statuses: ['AVAILABLE', 'PARTIAL_USED'],
+          })
           .andWhere('lot.remainingQuantity > 0')
           .orderBy('lot.createDate', 'ASC')
           .addOrderBy('lot.id', 'ASC')
           .getMany();
 
-        const totalAvailable = availableLots.reduce((sum, lot) => sum + Number(lot.remainingQuantity), 0);
+        const totalAvailable = availableLots.reduce(
+          (sum, lot) => sum + Number(lot.remainingQuantity),
+          0,
+        );
         if (totalAvailable < requiredQty) {
           throw new ConflictException(
-            `Insufficient stock for material ${bom.material.matCode}. Available: ${totalAvailable}, Required: ${requiredQty}`
+            `Insufficient stock for material ${bom.material.matCode}. Available: ${totalAvailable}, Required: ${requiredQty}`,
           );
         }
 
@@ -589,9 +737,10 @@ export class ReceivingIssuingService {
           unit: bom.material.unitMaster?.code || 'PCS',
           department: dto.department,
           workOrderNo: dto.workOrderNo,
-          remark: dto.remark || `Product: ${product.productCode} x ${dto.quantity}`,
+          remark:
+            dto.remark || `Product: ${product.productCode} x ${dto.quantity}`,
           status: 'COMPLETED',
-          createBy: dto.createBy ?? 'system'
+          createBy: dto.createBy ?? 'system',
         });
         const savedIssuing = await manager.save(issuing);
 
@@ -611,18 +760,22 @@ export class ReceivingIssuingService {
         for (const lot of availableLots) {
           if (remainingToIssue <= 0) break;
 
-          const issueFromThisLot = Math.min(Number(lot.remainingQuantity), remainingToIssue);
+          const issueFromThisLot = Math.min(
+            Number(lot.remainingQuantity),
+            remainingToIssue,
+          );
 
           const issuingLot = manager.create(MaterialIssuingLot, {
             issuingId: savedIssuing.id,
             lotId: lot.id,
             qrCode: lot.qrCode,
             quantity: issueFromThisLot,
-            unit: bom.material.unitMaster?.code || 'PCS'
+            unit: bom.material.unitMaster?.code || 'PCS',
           });
           await manager.save(issuingLot);
 
-          lot.remainingQuantity = Number(lot.remainingQuantity) - issueFromThisLot;
+          lot.remainingQuantity =
+            Number(lot.remainingQuantity) - issueFromThisLot;
           if (lot.remainingQuantity === 0) {
             lot.status = 'USED_UP';
           } else {
@@ -642,7 +795,7 @@ export class ReceivingIssuingService {
             remainingQuantity: lot.remainingQuantity,
             referenceNo: issuingNo,
             remark: `Product: ${product.productCode} x ${dto.quantity}`,
-            createBy: dto.createBy ?? 'system'
+            createBy: dto.createBy ?? 'system',
           });
           await manager.save(transaction);
 
@@ -657,13 +810,15 @@ export class ReceivingIssuingService {
               filePath: doc.filePath,
               fileType: doc.fileType,
               fileSize: doc.fileSize,
-              createBy: dto.createBy ?? 'system'
+              createBy: dto.createBy ?? 'system',
             });
             await manager.save(document);
           }
         }
 
-        const stock = await manager.findOne(MaterialsStock, { where: { materialId: bom.materialId } });
+        const stock = await manager.findOne(MaterialsStock, {
+          where: { materialId: bom.materialId },
+        });
         if (stock) {
           stock.totalQty -= requiredQty;
           stock.availableQty -= requiredQty;
@@ -684,14 +839,21 @@ export class ReceivingIssuingService {
 
     try {
       for (const item of dto.items) {
-        const material = await this.materialRepository.findOne({ where: { id: item.materialId } });
-        if (!material) throw new NotFoundException(`Material with id ${item.materialId} not found`);
+        const material = await this.materialRepository.findOne({
+          where: { id: item.materialId },
+        });
+        if (!material)
+          throw new NotFoundException(
+            `Material with id ${item.materialId} not found`,
+          );
 
-        const stock = await this.stockRepository.findOne({ where: { materialId: item.materialId } });
+        const stock = await this.stockRepository.findOne({
+          where: { materialId: item.materialId },
+        });
         if (!stock || stock.availableQty < item.quantity) {
           const available = stock?.availableQty || 0;
           throw new BadRequestException(
-            `Insufficient stock for material ${material.matCode}. Available: ${available}, Requested: ${item.quantity}`
+            `Insufficient stock for material ${material.matCode}. Available: ${available}, Requested: ${item.quantity}`,
           );
         }
       }
@@ -709,12 +871,18 @@ export class ReceivingIssuingService {
 
       const savedIssue = await queryRunner.manager.save(issue);
 
-      const documents = dto.documentFiles || (dto.documentFile ? [{
-        fileName: dto.documentFile.split('/').pop() || 'document',
-        filePath: dto.documentFile,
-        fileType: 'application/pdf',
-        fileSize: 0
-      }] : []);
+      const documents =
+        dto.documentFiles ||
+        (dto.documentFile
+          ? [
+              {
+                fileName: dto.documentFile.split('/').pop() || 'document',
+                filePath: dto.documentFile,
+                fileType: 'application/pdf',
+                fileSize: 0,
+              },
+            ]
+          : []);
 
       if (documents.length > 0) {
         for (const doc of documents) {
@@ -742,9 +910,9 @@ export class ReceivingIssuingService {
         });
         await queryRunner.manager.save(issueItem);
 
-        const material = await queryRunner.manager.findOne(Material, { 
+        const material = await queryRunner.manager.findOne(Material, {
           where: { id: item.materialId },
-          relations: ['unitMaster']
+          relations: ['unitMaster'],
         });
 
         const issuingCount = await queryRunner.manager.count(MaterialIssuing);
@@ -759,28 +927,35 @@ export class ReceivingIssuingService {
           department: 'MANUAL',
           remark: dto.remarks,
           status: 'COMPLETED',
-          createBy: user
+          createBy: user,
         });
         const savedIssuing = await queryRunner.manager.save(issuing);
 
         if (dto.documentFiles && dto.documentFiles.length > 0) {
           for (const doc of dto.documentFiles) {
-            const issuingDoc = queryRunner.manager.create(MaterialIssuingDocument, {
-              issuingId: savedIssuing.id,
-              fileName: doc.fileName,
-              filePath: doc.filePath,
-              fileType: doc.fileType,
-              fileSize: doc.fileSize,
-              createBy: user,
-            });
+            const issuingDoc = queryRunner.manager.create(
+              MaterialIssuingDocument,
+              {
+                issuingId: savedIssuing.id,
+                fileName: doc.fileName,
+                filePath: doc.filePath,
+                fileType: doc.fileType,
+                fileSize: doc.fileSize,
+                createBy: user,
+              },
+            );
             await queryRunner.manager.save(issuingDoc);
           }
         }
 
         const availableLots = await queryRunner.manager
           .createQueryBuilder(MaterialReceivingLot, 'lot')
-          .where('lot.materialId = :materialId', { materialId: item.materialId })
-          .andWhere('lot.status IN (:...statuses)', { statuses: ['AVAILABLE', 'PARTIAL_USED'] })
+          .where('lot.materialId = :materialId', {
+            materialId: item.materialId,
+          })
+          .andWhere('lot.status IN (:...statuses)', {
+            statuses: ['AVAILABLE', 'PARTIAL_USED'],
+          })
           .andWhere('lot.remainingQuantity > 0')
           .orderBy('lot.createDate', 'ASC')
           .addOrderBy('lot.id', 'ASC')
@@ -791,18 +966,22 @@ export class ReceivingIssuingService {
         for (const lot of availableLots) {
           if (remainingToIssue <= 0) break;
 
-          const issueFromThisLot = Math.min(Number(lot.remainingQuantity), remainingToIssue);
+          const issueFromThisLot = Math.min(
+            Number(lot.remainingQuantity),
+            remainingToIssue,
+          );
 
           const issuingLot = queryRunner.manager.create(MaterialIssuingLot, {
             issuingId: savedIssuing.id,
             lotId: lot.id,
             qrCode: lot.qrCode,
             quantity: issueFromThisLot,
-            unit: item.unit || material?.unitMaster?.code || 'PCS'
+            unit: item.unit || material?.unitMaster?.code || 'PCS',
           });
           await queryRunner.manager.save(issuingLot);
 
-          lot.remainingQuantity = Number(lot.remainingQuantity) - issueFromThisLot;
+          lot.remainingQuantity =
+            Number(lot.remainingQuantity) - issueFromThisLot;
           if (lot.remainingQuantity === 0) {
             lot.status = 'USED_UP';
           } else {
@@ -822,14 +1001,16 @@ export class ReceivingIssuingService {
             remainingQuantity: lot.remainingQuantity,
             referenceNo: issuingNo,
             remark: dto.remarks || item.remarks || '',
-            createBy: user
+            createBy: user,
           });
           await queryRunner.manager.save(transaction);
 
           remainingToIssue -= issueFromThisLot;
         }
 
-        const stock = await queryRunner.manager.findOne(MaterialsStock, { where: { materialId: item.materialId } });
+        const stock = await queryRunner.manager.findOne(MaterialsStock, {
+          where: { materialId: item.materialId },
+        });
         if (stock) {
           stock.totalQty -= item.quantity;
           stock.availableQty -= item.quantity;
@@ -863,12 +1044,15 @@ export class ReceivingIssuingService {
       }
 
       for (const bom of product.boms) {
-        const requiredQty = Number(bom.quantityPerUnit) * dto.productionQuantity;
-        const stock = await this.stockRepository.findOne({ where: { materialId: bom.materialId } });
+        const requiredQty =
+          Number(bom.quantityPerUnit) * dto.productionQuantity;
+        const stock = await this.stockRepository.findOne({
+          where: { materialId: bom.materialId },
+        });
         if (!stock || stock.availableQty < requiredQty) {
           const available = stock?.availableQty || 0;
           throw new BadRequestException(
-            `Insufficient stock for material ${bom.material.matCode}. Available: ${available}, Required: ${requiredQty}`
+            `Insufficient stock for material ${bom.material.matCode}. Available: ${available}, Required: ${requiredQty}`,
           );
         }
       }
@@ -915,9 +1099,9 @@ export class ReceivingIssuingService {
         });
         await queryRunner.manager.save(issueItem);
 
-        const material = await queryRunner.manager.findOne(Material, { 
+        const material = await queryRunner.manager.findOne(Material, {
           where: { id: bom.materialId },
-          relations: ['unitMaster']
+          relations: ['unitMaster'],
         });
 
         const issuingCount = await queryRunner.manager.count(MaterialIssuing);
@@ -933,20 +1117,23 @@ export class ReceivingIssuingService {
           workOrderNo: dto.productionOrderNo,
           remark: dto.remarks,
           status: 'COMPLETED',
-          createBy: user
+          createBy: user,
         });
         const savedIssuing = await queryRunner.manager.save(issuing);
 
         if (dto.documentFiles && dto.documentFiles.length > 0) {
           for (const doc of dto.documentFiles) {
-            const issuingDoc = queryRunner.manager.create(MaterialIssuingDocument, {
-              issuingId: savedIssuing.id,
-              fileName: doc.fileName,
-              filePath: doc.filePath,
-              fileType: doc.fileType,
-              fileSize: doc.fileSize,
-              createBy: user,
-            });
+            const issuingDoc = queryRunner.manager.create(
+              MaterialIssuingDocument,
+              {
+                issuingId: savedIssuing.id,
+                fileName: doc.fileName,
+                filePath: doc.filePath,
+                fileType: doc.fileType,
+                fileSize: doc.fileSize,
+                createBy: user,
+              },
+            );
             await queryRunner.manager.save(issuingDoc);
           }
         }
@@ -954,7 +1141,9 @@ export class ReceivingIssuingService {
         const availableLots = await queryRunner.manager
           .createQueryBuilder(MaterialReceivingLot, 'lot')
           .where('lot.materialId = :materialId', { materialId: bom.materialId })
-          .andWhere('lot.status IN (:...statuses)', { statuses: ['AVAILABLE', 'PARTIAL_USED'] })
+          .andWhere('lot.status IN (:...statuses)', {
+            statuses: ['AVAILABLE', 'PARTIAL_USED'],
+          })
           .andWhere('lot.remainingQuantity > 0')
           .orderBy('lot.createDate', 'ASC')
           .addOrderBy('lot.id', 'ASC')
@@ -965,18 +1154,22 @@ export class ReceivingIssuingService {
         for (const lot of availableLots) {
           if (remainingToIssue <= 0) break;
 
-          const issueFromThisLot = Math.min(Number(lot.remainingQuantity), remainingToIssue);
+          const issueFromThisLot = Math.min(
+            Number(lot.remainingQuantity),
+            remainingToIssue,
+          );
 
           const issuingLot = queryRunner.manager.create(MaterialIssuingLot, {
             issuingId: savedIssuing.id,
             lotId: lot.id,
             qrCode: lot.qrCode,
             quantity: issueFromThisLot,
-            unit: bom.unit || material?.unitMaster?.code || 'PCS'
+            unit: bom.unit || material?.unitMaster?.code || 'PCS',
           });
           await queryRunner.manager.save(issuingLot);
 
-          lot.remainingQuantity = Number(lot.remainingQuantity) - issueFromThisLot;
+          lot.remainingQuantity =
+            Number(lot.remainingQuantity) - issueFromThisLot;
           if (lot.remainingQuantity === 0) {
             lot.status = 'USED_UP';
           } else {
@@ -991,7 +1184,7 @@ export class ReceivingIssuingService {
           MaterialsStock,
           { materialId: bom.materialId },
           'availableQty',
-          issuedQty
+          issuedQty,
         );
       }
 
@@ -1017,9 +1210,12 @@ export class ReceivingIssuingService {
 
     const requiredMaterials = await Promise.all(
       product.boms.map(async (bom) => {
-        const requiredQty = Number(bom.quantityPerUnit) * dto.productionQuantity;
-        const stock = await this.stockRepository.findOne({ where: { materialId: bom.materialId } });
-        
+        const requiredQty =
+          Number(bom.quantityPerUnit) * dto.productionQuantity;
+        const stock = await this.stockRepository.findOne({
+          where: { materialId: bom.materialId },
+        });
+
         return {
           materialId: bom.materialId,
           materialCode: bom.material.matCode,
@@ -1030,7 +1226,7 @@ export class ReceivingIssuingService {
           currentStock: stock?.availableQty || 0,
           isAvailable: stock && stock.availableQty >= requiredQty,
         };
-      })
+      }),
     );
 
     return {
@@ -1042,19 +1238,31 @@ export class ReceivingIssuingService {
     };
   }
 
-  async findAllIssues(page = 1, limit = 10, issueType?: string, startDate?: string, endDate?: string) {
-    const query = this.issueRepo.createQueryBuilder('issue')
+  async findAllIssues(
+    page = 1,
+    limit = 10,
+    issueType?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    const query = this.issueRepo
+      .createQueryBuilder('issue')
       .leftJoinAndSelect('issue.items', 'items')
       .leftJoinAndSelect('items.material', 'material')
       .leftJoinAndSelect('issue.product', 'product')
       .leftJoinAndSelect('issue.documents', 'documents')
       .where('issue.isActive = :isActive', { isActive: true });
 
-    if (issueType) query.andWhere('issue.issueType = :issueType', { issueType });
-    if (startDate) query.andWhere('issue.issueDate >= :startDate', { startDate });
+    if (issueType)
+      query.andWhere('issue.issueType = :issueType', { issueType });
+    if (startDate)
+      query.andWhere('issue.issueDate >= :startDate', { startDate });
     if (endDate) query.andWhere('issue.issueDate <= :endDate', { endDate });
 
-    query.orderBy('issue.issueDate', 'DESC').skip((page - 1) * limit).take(limit);
+    query
+      .orderBy('issue.issueDate', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
 
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -1072,7 +1280,10 @@ export class ReceivingIssuingService {
   async getIssueDocuments(id: number) {
     const issue = await this.issueRepo.findOne({ where: { id } });
     if (!issue) throw new NotFoundException('Material issue not found');
-    return this.issueDocumentRepo.find({ where: { issueId: id }, order: { createDate: 'ASC' } });
+    return this.issueDocumentRepo.find({
+      where: { issueId: id },
+      order: { createDate: 'ASC' },
+    });
   }
 
   private async generateIssueNo(): Promise<string> {
@@ -1080,7 +1291,7 @@ export class ReceivingIssuingService {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const prefix = `ISS-${year}${month}`;
-    
+
     const lastIssue = await this.issueRepo.findOne({
       where: {},
       order: { id: 'DESC' },
@@ -1118,22 +1329,28 @@ export class ReceivingIssuingService {
   async getMaterialStock(materialId: number) {
     const stock = await this.stockRepository.findOne({
       where: { materialId },
-      relations: ['material', 'material.unitMaster']
+      relations: ['material', 'material.unitMaster'],
     });
     if (!stock) throw new NotFoundException('Material stock not found');
     return stock;
   }
 
-  async getTransactionReport(startDate?: string, endDate?: string, materialId?: number) {
+  async getTransactionReport(
+    startDate?: string,
+    endDate?: string,
+    materialId?: number,
+  ) {
     const query = this.transactionRepository
       .createQueryBuilder('txn')
       .leftJoinAndSelect('txn.material', 'material')
       .leftJoinAndSelect('txn.lot', 'lot')
       .orderBy('txn.transactionDate', 'ASC');
 
-    if (startDate) query.andWhere('txn.transactionDate >= :startDate', { startDate });
+    if (startDate)
+      query.andWhere('txn.transactionDate >= :startDate', { startDate });
     if (endDate) query.andWhere('txn.transactionDate <= :endDate', { endDate });
-    if (materialId) query.andWhere('txn.materialId = :materialId', { materialId });
+    if (materialId)
+      query.andWhere('txn.materialId = :materialId', { materialId });
 
     const transactions = await query.getMany();
 
@@ -1141,7 +1358,7 @@ export class ReceivingIssuingService {
       const date = new Date(txn.transactionDate).toISOString().split('T')[0];
       const key = `${txn.materialId}-${date}`;
       const qty = Number(txn.quantity);
-      
+
       if (!acc[key]) {
         acc[key] = {
           materialId: txn.materialId,
@@ -1153,14 +1370,14 @@ export class ReceivingIssuingService {
           balance: 0,
         };
       }
-      
+
       if (qty > 0) {
         acc[key].received += qty;
       } else {
         acc[key].issued += Math.abs(qty);
       }
       acc[key].balance = acc[key].received - acc[key].issued;
-      
+
       return acc;
     }, {});
 
@@ -1168,10 +1385,14 @@ export class ReceivingIssuingService {
   }
 
   async createIssuingFromMaterialBom(dto: any, user: string) {
-    return await this.dataSource.transaction(async manager => {
+    return await this.dataSource.transaction(async (manager) => {
       const material: any = await manager.findOne(Material, {
         where: { id: dto.materialId },
-        relations: ['boms', 'boms.childMaterial', 'boms.childMaterial.unitMaster']
+        relations: [
+          'boms',
+          'boms.childMaterial',
+          'boms.childMaterial.unitMaster',
+        ],
       });
       if (!material) throw new NotFoundException('Material not found');
       if (!material.boms || material.boms.length === 0) {
@@ -1185,17 +1406,24 @@ export class ReceivingIssuingService {
 
         const availableLots = await manager
           .createQueryBuilder(MaterialReceivingLot, 'lot')
-          .where('lot.materialId = :materialId', { materialId: bom.childMaterialId })
-          .andWhere('lot.status IN (:...statuses)', { statuses: ['AVAILABLE', 'PARTIAL_USED'] })
+          .where('lot.materialId = :materialId', {
+            materialId: bom.childMaterialId,
+          })
+          .andWhere('lot.status IN (:...statuses)', {
+            statuses: ['AVAILABLE', 'PARTIAL_USED'],
+          })
           .andWhere('lot.remainingQuantity > 0')
           .orderBy('lot.createDate', 'ASC')
           .addOrderBy('lot.id', 'ASC')
           .getMany();
 
-        const totalAvailable = availableLots.reduce((sum, lot) => sum + Number(lot.remainingQuantity), 0);
+        const totalAvailable = availableLots.reduce(
+          (sum, lot) => sum + Number(lot.remainingQuantity),
+          0,
+        );
         if (totalAvailable < requiredQty) {
           throw new ConflictException(
-            `Insufficient stock for material ${bom.childMaterial.matCode}. Available: ${totalAvailable}, Required: ${requiredQty}`
+            `Insufficient stock for material ${bom.childMaterial.matCode}. Available: ${totalAvailable}, Required: ${requiredQty}`,
           );
         }
 
@@ -1210,9 +1438,10 @@ export class ReceivingIssuingService {
           unit: bom.childMaterial.unitMaster?.code || 'PCS',
           department: dto.department || 'PRODUCTION',
           workOrderNo: dto.workOrderNo,
-          remark: dto.remark || `Material: ${material.matCode} x ${dto.quantity}`,
+          remark:
+            dto.remark || `Material: ${material.matCode} x ${dto.quantity}`,
           status: 'COMPLETED',
-          createBy: user
+          createBy: user,
         });
         const savedIssuing = await manager.save(issuing);
 
@@ -1221,18 +1450,22 @@ export class ReceivingIssuingService {
         for (const lot of availableLots) {
           if (remainingToIssue <= 0) break;
 
-          const issueFromThisLot = Math.min(Number(lot.remainingQuantity), remainingToIssue);
+          const issueFromThisLot = Math.min(
+            Number(lot.remainingQuantity),
+            remainingToIssue,
+          );
 
           const issuingLot = manager.create(MaterialIssuingLot, {
             issuingId: savedIssuing.id,
             lotId: lot.id,
             qrCode: lot.qrCode,
             quantity: issueFromThisLot,
-            unit: bom.childMaterial.unitMaster?.code || 'PCS'
+            unit: bom.childMaterial.unitMaster?.code || 'PCS',
           });
           await manager.save(issuingLot);
 
-          lot.remainingQuantity = Number(lot.remainingQuantity) - issueFromThisLot;
+          lot.remainingQuantity =
+            Number(lot.remainingQuantity) - issueFromThisLot;
           if (lot.remainingQuantity === 0) {
             lot.status = 'USED_UP';
           } else {
@@ -1251,13 +1484,15 @@ export class ReceivingIssuingService {
               filePath: doc.filePath,
               fileType: doc.fileType,
               fileSize: doc.fileSize,
-              createBy: user
+              createBy: user,
             });
             await manager.save(document);
           }
         }
 
-        const stock = await manager.findOne(MaterialsStock, { where: { materialId: bom.childMaterialId } });
+        const stock = await manager.findOne(MaterialsStock, {
+          where: { materialId: bom.childMaterialId },
+        });
         if (stock) {
           stock.totalQty -= requiredQty;
           stock.availableQty -= requiredQty;

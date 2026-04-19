@@ -1,4 +1,11 @@
-import { IsOptional, IsString, IsBoolean, IsArray } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsArray,
+  IsEnum,
+} from 'class-validator';
+import { RoleScopeType } from '../entities/role.entity';
 
 export class UpdateRoleDto {
   @IsOptional()
@@ -16,6 +23,10 @@ export class UpdateRoleDto {
   @IsOptional()
   @IsBoolean()
   isSystem?: boolean;
+
+  @IsOptional()
+  @IsEnum(RoleScopeType)
+  scopeType?: RoleScopeType;
 
   @IsOptional()
   @IsArray()

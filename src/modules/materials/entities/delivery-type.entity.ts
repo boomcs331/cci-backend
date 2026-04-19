@@ -1,7 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Material } from './material.entity';
 
-@Entity('delivery_types')
+@Entity({ schema: 'master', name: 'delivery_types' })
 export class DeliveryType {
   @PrimaryGeneratedColumn()
   id: number;
@@ -24,6 +31,6 @@ export class DeliveryType {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
-  @OneToMany(() => Material, material => material.deliveryType)
+  @OneToMany(() => Material, (material) => material.deliveryType)
   materials: Material[];
 }

@@ -6,10 +6,15 @@ import {
   UpdateDateColumn,
   ManyToMany,
   JoinTable,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { Role } from './role.entity';
+import { Department } from './department.entity';
+import { UserRoleAssignment } from './user-role-assignment.entity';
 
-@Entity('users')
+@Entity({ schema: 'auth', name: 'users' })
 export class User {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
@@ -29,6 +34,15 @@ export class User {
   @Column({ type: 'varchar', length: 100, nullable: true, name: 'last_name' })
   lastName?: string;
 
+  @Column({ type: 'bigint', nullable: true, name: 'department_id' })
+  departmentId?: string | null;
+
+  @ManyToOne(() => Department, (department) => department.users, {
+    nullable: true,
+  })
+  @JoinColumn({ name: 'department_id' })
+  department?: Department | null;
+
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
@@ -43,9 +57,13 @@ export class User {
 
   @ManyToMany(() => Role, (role) => role.users)
   @JoinTable({
+    schema: 'auth',
     name: 'user_roles',
     joinColumn: { name: 'user_id', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'role_id', referencedColumnName: 'id' },
   })
   roles: Role[];
+
+  @OneToMany(() => UserRoleAssignment, (assignment) => assignment.user)
+  roleAssignments: UserRoleAssignment[];
 }

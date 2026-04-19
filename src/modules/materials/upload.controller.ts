@@ -1,4 +1,10 @@
-import { Controller, Post, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
+} from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { extname, join } from 'path';
 import { ResponseHelper } from '@app/common';
@@ -9,7 +15,8 @@ export class UploadController {
   @Post('document')
   @UseInterceptors(FilesInterceptor('files', 10))
   uploadDocument(@UploadedFiles() files: any[]) {
-    if (!files || files.length === 0) throw new BadRequestException('No files uploaded');
+    if (!files || files.length === 0)
+      throw new BadRequestException('No files uploaded');
 
     const uploadDir = './uploads/material-issues';
     if (!existsSync(uploadDir)) {
@@ -20,7 +27,9 @@ export class UploadController {
 
     for (const file of files) {
       if (!file.originalname.match(/\.(pdf|jpg|jpeg|png|doc|docx)$/)) {
-        throw new BadRequestException(`Invalid file type: ${file.originalname}`);
+        throw new BadRequestException(
+          `Invalid file type: ${file.originalname}`,
+        );
       }
 
       if (file.size > 10 * 1024 * 1024) {
@@ -37,13 +46,13 @@ export class UploadController {
       uploadedFiles.push({
         originalName: file.originalname,
         filePath: `uploads/material-issues/${filename}`,
-        size: file.size
+        size: file.size,
       });
     }
 
     return ResponseHelper.success(
       { files: uploadedFiles },
-      'Files uploaded successfully'
+      'Files uploaded successfully',
     );
   }
 }

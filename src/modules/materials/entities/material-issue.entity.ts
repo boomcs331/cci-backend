@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { MaterialIssueItem } from './material-issue-item.entity';
 import { MaterialIssueDocument } from './material-issue-document.entity';
 import { Product } from '../../products/entities/product.entity';
@@ -53,10 +62,10 @@ export class MaterialIssue {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
-  @OneToMany(() => MaterialIssueItem, item => item.issue)
+  @OneToMany(() => MaterialIssueItem, (item) => item.issue)
   items: MaterialIssueItem[];
 
-  @OneToMany(() => MaterialIssueDocument, doc => doc.issue)
+  @OneToMany(() => MaterialIssueDocument, (doc) => doc.issue)
   documents: MaterialIssueDocument[];
 
   @ManyToOne(() => Product)

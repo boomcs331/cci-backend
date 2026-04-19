@@ -37,7 +37,12 @@ export class AuthLoggerMiddleware implements NestMiddleware {
 
     res.on('finish', () => {
       const duration = Date.now() - startTime;
-      const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'log';
+      const level =
+        res.statusCode >= 500
+          ? 'error'
+          : res.statusCode >= 400
+            ? 'warn'
+            : 'log';
       const payload = JSON.stringify({
         event: 'auth_request_finished',
         requestId,
@@ -124,7 +129,9 @@ export class AuthLoggerMiddleware implements NestMiddleware {
     return body;
   }
 
-  private sanitizeHeaders(headers: Record<string, unknown>): Record<string, unknown> {
+  private sanitizeHeaders(
+    headers: Record<string, unknown>,
+  ): Record<string, unknown> {
     const sanitized = { ...headers };
     if (sanitized.authorization) {
       sanitized.authorization = '***HIDDEN***';
@@ -175,7 +182,8 @@ export class AuthLoggerMiddleware implements NestMiddleware {
       });
       await this.apiLogRepository.save(log);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to persist auth API log: ${errorMessage}`);
     }
   }

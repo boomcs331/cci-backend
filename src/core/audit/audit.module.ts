@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ApiLog, AuthLog } from './entities';
+import { ApiLog, AuthLog, QrScanLog } from './entities';
 import { ApiAuditService } from './services/api-audit.service';
+import { QrScanLogService } from './services/qr-scan-log.service';
 import { LogsController } from './controllers/logs.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ApiLog, AuthLog])],
+  imports: [TypeOrmModule.forFeature([ApiLog, AuthLog, QrScanLog])],
   controllers: [LogsController],
-  providers: [ApiAuditService],
-  exports: [ApiAuditService],
+  providers: [ApiAuditService, QrScanLogService],
+  exports: [ApiAuditService, QrScanLogService],
 })
 export class AuditModule {}

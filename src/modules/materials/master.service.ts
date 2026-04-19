@@ -1,8 +1,22 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Model, DeliveryType, Unit, LoadingPoint, ProcessLine } from './entities';
-import { CreateMasterDto, UpdateMasterDto, PaginationDto } from './dto/master.dto';
+import {
+  Model,
+  DeliveryType,
+  Unit,
+  LoadingPoint,
+  ProcessLine,
+} from './entities';
+import {
+  CreateMasterDto,
+  UpdateMasterDto,
+  PaginationDto,
+} from './dto/master.dto';
 
 @Injectable()
 export class MasterService {
@@ -21,9 +35,14 @@ export class MasterService {
 
   // Models
   async createModel(dto: CreateMasterDto): Promise<Model> {
-    const existing = await this.modelRepository.findOne({ where: { code: dto.code } });
+    const existing = await this.modelRepository.findOne({
+      where: { code: dto.code },
+    });
     if (existing) throw new ConflictException('Model code already exists');
-    const model = this.modelRepository.create({ ...dto, createBy: dto.createBy ?? 'system' });
+    const model = this.modelRepository.create({
+      ...dto,
+      createBy: dto.createBy ?? 'system',
+    });
     return await this.modelRepository.save(model);
   }
 
@@ -70,9 +89,15 @@ export class MasterService {
 
   // Delivery Types
   async createDeliveryType(dto: CreateMasterDto): Promise<DeliveryType> {
-    const existing = await this.deliveryTypeRepository.findOne({ where: { code: dto.code } });
-    if (existing) throw new ConflictException('Delivery type code already exists');
-    const deliveryType = this.deliveryTypeRepository.create({ ...dto, createBy: dto.createBy ?? 'system' });
+    const existing = await this.deliveryTypeRepository.findOne({
+      where: { code: dto.code },
+    });
+    if (existing)
+      throw new ConflictException('Delivery type code already exists');
+    const deliveryType = this.deliveryTypeRepository.create({
+      ...dto,
+      createBy: dto.createBy ?? 'system',
+    });
     return await this.deliveryTypeRepository.save(deliveryType);
   }
 
@@ -97,12 +122,17 @@ export class MasterService {
   }
 
   async findDeliveryTypeById(id: number): Promise<DeliveryType> {
-    const deliveryType = await this.deliveryTypeRepository.findOne({ where: { id } });
+    const deliveryType = await this.deliveryTypeRepository.findOne({
+      where: { id },
+    });
     if (!deliveryType) throw new NotFoundException('Delivery type not found');
     return deliveryType;
   }
 
-  async updateDeliveryType(id: number, dto: UpdateMasterDto): Promise<DeliveryType> {
+  async updateDeliveryType(
+    id: number,
+    dto: UpdateMasterDto,
+  ): Promise<DeliveryType> {
     const deliveryType = await this.findDeliveryTypeById(id);
     Object.assign(deliveryType, { ...dto, updateBy: dto.updateBy ?? 'system' });
     return await this.deliveryTypeRepository.save(deliveryType);
@@ -119,9 +149,14 @@ export class MasterService {
 
   // Units
   async createUnit(dto: CreateMasterDto): Promise<Unit> {
-    const existing = await this.unitRepository.findOne({ where: { code: dto.code } });
+    const existing = await this.unitRepository.findOne({
+      where: { code: dto.code },
+    });
     if (existing) throw new ConflictException('Unit code already exists');
-    const unit = this.unitRepository.create({ ...dto, createBy: dto.createBy ?? 'system' });
+    const unit = this.unitRepository.create({
+      ...dto,
+      createBy: dto.createBy ?? 'system',
+    });
     return await this.unitRepository.save(unit);
   }
 
@@ -168,9 +203,15 @@ export class MasterService {
 
   // Loading Points
   async createLoadingPoint(dto: CreateMasterDto): Promise<LoadingPoint> {
-    const existing = await this.loadingPointRepository.findOne({ where: { code: dto.code } });
-    if (existing) throw new ConflictException('Loading point code already exists');
-    const loadingPoint = this.loadingPointRepository.create({ ...dto, createBy: dto.createBy ?? 'system' });
+    const existing = await this.loadingPointRepository.findOne({
+      where: { code: dto.code },
+    });
+    if (existing)
+      throw new ConflictException('Loading point code already exists');
+    const loadingPoint = this.loadingPointRepository.create({
+      ...dto,
+      createBy: dto.createBy ?? 'system',
+    });
     return await this.loadingPointRepository.save(loadingPoint);
   }
 
@@ -195,12 +236,17 @@ export class MasterService {
   }
 
   async findLoadingPointById(id: number): Promise<LoadingPoint> {
-    const loadingPoint = await this.loadingPointRepository.findOne({ where: { id } });
+    const loadingPoint = await this.loadingPointRepository.findOne({
+      where: { id },
+    });
     if (!loadingPoint) throw new NotFoundException('Loading point not found');
     return loadingPoint;
   }
 
-  async updateLoadingPoint(id: number, dto: UpdateMasterDto): Promise<LoadingPoint> {
+  async updateLoadingPoint(
+    id: number,
+    dto: UpdateMasterDto,
+  ): Promise<LoadingPoint> {
     const loadingPoint = await this.findLoadingPointById(id);
     Object.assign(loadingPoint, { ...dto, updateBy: dto.updateBy ?? 'system' });
     return await this.loadingPointRepository.save(loadingPoint);
@@ -217,9 +263,15 @@ export class MasterService {
 
   // Process Lines
   async createProcessLine(dto: CreateMasterDto): Promise<ProcessLine> {
-    const existing = await this.processLineRepository.findOne({ where: { code: dto.code } });
-    if (existing) throw new ConflictException('Process line code already exists');
-    const processLine = this.processLineRepository.create({ ...dto, createBy: dto.createBy ?? 'system' });
+    const existing = await this.processLineRepository.findOne({
+      where: { code: dto.code },
+    });
+    if (existing)
+      throw new ConflictException('Process line code already exists');
+    const processLine = this.processLineRepository.create({
+      ...dto,
+      createBy: dto.createBy ?? 'system',
+    });
     return await this.processLineRepository.save(processLine);
   }
 
@@ -244,12 +296,17 @@ export class MasterService {
   }
 
   async findProcessLineById(id: number): Promise<ProcessLine> {
-    const processLine = await this.processLineRepository.findOne({ where: { id } });
+    const processLine = await this.processLineRepository.findOne({
+      where: { id },
+    });
     if (!processLine) throw new NotFoundException('Process line not found');
     return processLine;
   }
 
-  async updateProcessLine(id: number, dto: UpdateMasterDto): Promise<ProcessLine> {
+  async updateProcessLine(
+    id: number,
+    dto: UpdateMasterDto,
+  ): Promise<ProcessLine> {
     const processLine = await this.findProcessLineById(id);
     Object.assign(processLine, { ...dto, updateBy: dto.updateBy ?? 'system' });
     return await this.processLineRepository.save(processLine);

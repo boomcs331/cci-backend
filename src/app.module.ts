@@ -11,7 +11,6 @@ import { ProductionPlansModule } from './modules/production-plans/production-pla
 import { ProductionOrdersModule } from './modules/production-orders/production-orders.module';
 import { AuditModule } from './core/audit/audit.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -30,8 +29,6 @@ import { AuditModule } from './core/audit/audit.module';
     ProductionOrdersModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-  ],
+  providers: [AppService],
 })
 export class AppModule {}

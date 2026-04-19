@@ -1,6 +1,26 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ParseIntPipe, Query, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  ParseIntPipe,
+  Query,
+  Patch,
+} from '@nestjs/common';
 import { MaterialsService } from './materials.service';
-import { CreateMaterialDto, UpdateMaterialDto, CreateMaterialsTypeDto, CreateMaterialsLocationDto, CreateItemsNameDto, StockTransactionDto, CreateSupplierDto, UpdateSupplierDto } from './dto/materials.dto';
+import {
+  CreateMaterialDto,
+  UpdateMaterialDto,
+  CreateMaterialsTypeDto,
+  CreateMaterialsLocationDto,
+  CreateItemsNameDto,
+  StockTransactionDto,
+  CreateSupplierDto,
+  UpdateSupplierDto,
+} from './dto/materials.dto';
 import { ResponseHelper } from '@app/common';
 
 @Controller('materials')
@@ -16,8 +36,12 @@ export class MaterialsController {
 
   @Get('all')
   async getAllMaterialsWithoutPagination() {
-    const materials = await this.materialsService.findAllMaterialsWithoutPagination();
-    return ResponseHelper.success(materials, 'Materials retrieved successfully');
+    const materials =
+      await this.materialsService.findAllMaterialsWithoutPagination();
+    return ResponseHelper.success(
+      materials,
+      'Materials retrieved successfully',
+    );
   }
 
   @Get('stock')
@@ -35,20 +59,31 @@ export class MaterialsController {
     @Query('sortOrder') sortOrder: string = 'ASC',
     @Query('locationId') locationId?: string,
     @Query('unit') unit?: string,
-    @Query('isActive') isActive?: string
+    @Query('isActive') isActive?: string,
   ) {
-
-
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
     const locationIdNum = locationId ? parseInt(locationId) : undefined;
-    const isActiveBool = isActive !== undefined ? isActive === 'true' : undefined;
-    
+    const isActiveBool =
+      isActive !== undefined ? isActive === 'true' : undefined;
 
     const result = await this.materialsService.findAllMaterials(
-      pageNum, limitNum, search, sortBy, sortOrder, locationIdNum, unit, isActiveBool
+      pageNum,
+      limitNum,
+      search,
+      sortBy,
+      sortOrder,
+      locationIdNum,
+      unit,
+      isActiveBool,
     );
-    return ResponseHelper.paginated(result.materials, result.page, result.limit, result.total, 'Materials retrieved successfully');
+    return ResponseHelper.paginated(
+      result.materials,
+      result.page,
+      result.limit,
+      result.total,
+      'Materials retrieved successfully',
+    );
   }
 
   @Get(':id')
@@ -58,15 +93,18 @@ export class MaterialsController {
   }
 
   @Patch(':id')
-  async updateMaterial(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMaterialDto) {
+  async updateMaterial(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateMaterialDto,
+  ) {
     console.log('📝 Received DTO:', JSON.stringify(dto, null, 2));
     console.log('📝 matName type:', typeof dto.matName);
     console.log('📝 matName value:', dto.matName);
-    
+
     if (dto.matName !== undefined && typeof dto.matName !== 'string') {
       dto.matName = String(dto.matName);
     }
-    
+
     const material = await this.materialsService.updateMaterial(id, dto);
     return ResponseHelper.success(material, 'Material updated successfully');
   }

@@ -1,8 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Product } from './product.entity';
 import { Material } from '../../materials/entities/material.entity';
 
-@Entity('product_bom')
+@Entity({ schema: 'master', name: 'product_bom' })
 export class ProductBom {
   @PrimaryGeneratedColumn()
   id: number;
@@ -13,7 +21,12 @@ export class ProductBom {
   @Column({ name: 'material_id' })
   materialId: number;
 
-  @Column({ name: 'quantity_per_unit', type: 'decimal', precision: 15, scale: 4 })
+  @Column({
+    name: 'quantity_per_unit',
+    type: 'decimal',
+    precision: 15,
+    scale: 4,
+  })
   quantityPerUnit: number;
 
   @Column({ length: 50, nullable: true })
@@ -40,7 +53,7 @@ export class ProductBom {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
-  @ManyToOne(() => Product, product => product.boms)
+  @ManyToOne(() => Product, (product) => product.boms)
   @JoinColumn({ name: 'product_id' })
   product: Product;
 

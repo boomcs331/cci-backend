@@ -1,4 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+  OneToOne,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { ProductBom } from './product-bom.entity';
 import { Customer } from './customer.entity';
 import { ProductLocation } from './product-location.entity';
@@ -8,10 +18,12 @@ import { ProductDeliveryType } from './product-delivery-type.entity';
 import { ProductUnit } from './product-unit.entity';
 import { ProductLoadingPoint } from './product-loading-point.entity';
 import { ProductProcessLine } from './product-process-line.entity';
+import { ProductProductionStep } from './product-production-step.entity';
+import { ProductsStock } from './products-stock.entity';
 
-@Entity('products')
+@Entity({ schema: 'master', name: 'products' })
 export class Product {
-@PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ name: 'product_code', length: 50, unique: true })
@@ -74,38 +86,44 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description: string;
 
-  @OneToMany(() => ProductBom, bom => bom.product)
+  @OneToMany(() => ProductBom, (bom) => bom.product)
   boms: ProductBom[];
 
-  @ManyToOne(() => ProductType, type => type.products)
+  @OneToMany(() => ProductProductionStep, (step) => step.product)
+  productionSteps: ProductProductionStep[];
+
+  @ManyToOne(() => ProductType, (type) => type.products)
   @JoinColumn({ name: 'product_type_id' })
   productType: ProductType;
 
-  @ManyToOne(() => ProductLocation, location => location.products)
+  @ManyToOne(() => ProductLocation, (location) => location.products)
   @JoinColumn({ name: 'default_location_id' })
   defaultLocation: ProductLocation;
 
-  @ManyToOne(() => Customer, customer => customer.products)
+  @ManyToOne(() => Customer, (customer) => customer.products)
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
-  @ManyToOne(() => ProductModel, model => model.products)
+  @ManyToOne(() => ProductModel, (model) => model.products)
   @JoinColumn({ name: 'model_id' })
   model: ProductModel;
 
-  @ManyToOne(() => ProductDeliveryType, deliveryType => deliveryType.products)
+  @ManyToOne(() => ProductDeliveryType, (deliveryType) => deliveryType.products)
   @JoinColumn({ name: 'delivery_type_id' })
   deliveryType: ProductDeliveryType;
 
-  @ManyToOne(() => ProductUnit, unit => unit.products)
+  @ManyToOne(() => ProductUnit, (unit) => unit.products)
   @JoinColumn({ name: 'unit_id' })
   unit: ProductUnit;
 
-  @ManyToOne(() => ProductLoadingPoint, loadingPoint => loadingPoint.products)
+  @ManyToOne(() => ProductLoadingPoint, (loadingPoint) => loadingPoint.products)
   @JoinColumn({ name: 'loading_point_id' })
   loadingPoint: ProductLoadingPoint;
 
-  @ManyToOne(() => ProductProcessLine, processLine => processLine.products)
+  @ManyToOne(() => ProductProcessLine, (processLine) => processLine.products)
   @JoinColumn({ name: 'process_line_id' })
   processLine: ProductProcessLine;
+
+  @OneToOne(() => ProductsStock, (stock) => stock.product)
+  stock?: ProductsStock;
 }

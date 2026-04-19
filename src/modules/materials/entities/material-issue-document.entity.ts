@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { MaterialIssue } from './material-issue.entity';
 
 @Entity('material_issue_documents')
@@ -27,7 +34,7 @@ export class MaterialIssueDocument {
   @Column({ name: 'create_by', length: 255, nullable: true })
   createBy: string;
 
-  @ManyToOne(() => MaterialIssue, issue => issue.documents)
+  @ManyToOne(() => MaterialIssue, (issue) => issue.documents)
   @JoinColumn({ name: 'issue_id' })
   issue: MaterialIssue;
 }

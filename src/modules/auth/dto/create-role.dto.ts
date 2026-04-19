@@ -1,4 +1,11 @@
-import { IsString, MaxLength, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  MaxLength,
+  IsOptional,
+  IsBoolean,
+  IsEnum,
+} from 'class-validator';
+import { RoleScopeType } from '../entities/role.entity';
 
 export class CreateRoleDto {
   @IsString()
@@ -16,6 +23,10 @@ export class CreateRoleDto {
   @IsOptional()
   @IsBoolean()
   isSystem?: boolean;
+
+  @IsOptional()
+  @IsEnum(RoleScopeType)
+  scopeType?: RoleScopeType;
 
   @IsOptional()
   @IsString({ each: true })

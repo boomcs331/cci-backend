@@ -17,18 +17,22 @@ export class LoggingInterceptor implements NestInterceptor {
     const ctx = context.switchToHttp();
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
-    
+
     const { method, originalUrl } = request;
     const startTime = Date.now();
 
     return next.handle().pipe(
       tap(() => {
         const duration = Date.now() - startTime;
-        this.logger.log(`${method} ${originalUrl} ${response.statusCode} - ${duration}ms`);
+        this.logger.log(
+          `${method} ${originalUrl} ${response.statusCode} - ${duration}ms`,
+        );
       }),
       catchError((error) => {
         const duration = Date.now() - startTime;
-        this.logger.error(`${method} ${originalUrl} ${error.status || 500} - ${duration}ms - ${error.message}`);
+        this.logger.error(
+          `${method} ${originalUrl} ${error.status || 500} - ${duration}ms - ${error.message}`,
+        );
         throw error;
       }),
     );

@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { ProductionPlan } from './production-plan.entity';
 import { Product } from '../../products/entities/product.entity';
 
@@ -25,7 +32,9 @@ export class ProductionPlanItem {
   @CreateDateColumn({ name: 'create_date' })
   createDate: Date;
 
-  @ManyToOne(() => ProductionPlan, plan => plan.items, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ProductionPlan, (plan) => plan.items, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'plan_id' })
   plan: ProductionPlan;
 

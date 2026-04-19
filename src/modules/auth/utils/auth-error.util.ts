@@ -11,8 +11,8 @@ export function throwMappedUniqueConstraintError(
     throw error;
   }
 
-  const matchedConstraint = Object.keys(constraintMessageMap).find((constraint) =>
-    message.includes(constraint),
+  const matchedConstraint = Object.keys(constraintMessageMap).find(
+    (constraint) => message.includes(constraint),
   );
 
   if (matchedConstraint) {

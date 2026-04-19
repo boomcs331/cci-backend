@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Role } from './role.entity';
 
-@Entity('permissions')
+@Entity({ schema: 'auth', name: 'permissions' })
 export class Permission {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

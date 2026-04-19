@@ -1,7 +1,17 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Headers } from '@nestjs/common';
 import { ReceivingIssuingService } from './receiving-issuing.service';
-import { CreateReceivingDto, CreateIssuingDto, CreateIssuingWithDocumentDto, CreateIssuingFromBomDto, MaterialTransactionReportDto } from './dto';
-import { CreateManualIssueDto, CreateProductionIssueDto, PreviewProductionIssueDto } from '../dto/material-issue.dto';
+import {
+  CreateReceivingDto,
+  CreateIssuingDto,
+  CreateIssuingWithDocumentDto,
+  CreateIssuingFromBomDto,
+  MaterialTransactionReportDto,
+} from './dto';
+import {
+  CreateManualIssueDto,
+  CreateProductionIssueDto,
+  PreviewProductionIssueDto,
+} from '../dto/material-issue.dto';
 import { ResponseHelper } from '@app/common';
 
 @Controller('materials/transactions')
@@ -17,19 +27,31 @@ export class ReceivingIssuingController {
   @Post('issue-with-document')
   async createIssuingWithDocument(@Body() dto: CreateIssuingWithDocumentDto) {
     const issuing = await this.service.createIssuingWithDocument(dto);
-    return ResponseHelper.success(issuing, 'Material issued with documents successfully');
+    return ResponseHelper.success(
+      issuing,
+      'Material issued with documents successfully',
+    );
   }
 
   @Post('issue-from-bom')
   async createIssuingFromBom(@Body() dto: CreateIssuingFromBomDto) {
     const issuings = await this.service.createIssuingFromBom(dto);
-    return ResponseHelper.success(issuings, 'Materials issued from product BOM successfully');
+    return ResponseHelper.success(
+      issuings,
+      'Materials issued from product BOM successfully',
+    );
   }
 
   @Post('issue-from-material-bom')
   async createIssuingFromMaterialBom(@Body() dto: any) {
-    const issuings = await this.service.createIssuingFromMaterialBom(dto, 'admin');
-    return ResponseHelper.success(issuings, 'Materials issued from material BOM with FIFO successfully');
+    const issuings = await this.service.createIssuingFromMaterialBom(
+      dto,
+      'admin',
+    );
+    return ResponseHelper.success(
+      issuings,
+      'Materials issued from material BOM with FIFO successfully',
+    );
   }
 
   @Post('issue-manual')
@@ -41,7 +63,10 @@ export class ReceivingIssuingController {
   @Post('issue-production')
   async createProductionIssue(@Body() dto: CreateProductionIssueDto) {
     const issue = await this.service.createProductionIssue(dto, 'admin');
-    return ResponseHelper.success(issue, 'Production material issued successfully');
+    return ResponseHelper.success(
+      issue,
+      'Production material issued successfully',
+    );
   }
 
   @Post('issue-production/preview')
@@ -56,12 +81,24 @@ export class ReceivingIssuingController {
     @Query('limit') limit: string = '10',
     @Query('issueType') issueType?: string,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string
+    @Query('endDate') endDate?: string,
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
-    const result = await this.service.findAllIssues(pageNum, limitNum, issueType, startDate, endDate);
-    return ResponseHelper.paginated(result.data, result.page, result.limit, result.total, 'Material issues retrieved');
+    const result = await this.service.findAllIssues(
+      pageNum,
+      limitNum,
+      issueType,
+      startDate,
+      endDate,
+    );
+    return ResponseHelper.paginated(
+      result.data,
+      result.page,
+      result.limit,
+      result.total,
+      'Material issues retrieved',
+    );
   }
 
   @Get('issues/:id')
@@ -85,7 +122,7 @@ export class ReceivingIssuingController {
     @Query('sortOrder') sortOrder: string = 'DESC',
     @Query('materialId') materialId?: string,
     @Query('supplierId') supplierId?: string,
-    @Query('status') status?: string
+    @Query('status') status?: string,
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
@@ -93,14 +130,21 @@ export class ReceivingIssuingController {
     const supplierIdNum = supplierId ? parseInt(supplierId) : undefined;
 
     const result = await this.service.getAllReceivings(
-      pageNum, limitNum, search, sortBy, sortOrder, materialIdNum, supplierIdNum, status
+      pageNum,
+      limitNum,
+      search,
+      sortBy,
+      sortOrder,
+      materialIdNum,
+      supplierIdNum,
+      status,
     );
     return ResponseHelper.paginated(
       result.receivings,
       result.page,
       result.limit,
       result.total,
-      'Receivings retrieved successfully'
+      'Receivings retrieved successfully',
     );
   }
 
@@ -114,34 +158,51 @@ export class ReceivingIssuingController {
     @Query('materialId') materialId?: string,
     @Query('department') department?: string,
     @Query('status') status?: string,
-    @Query('issuingType') issuingType?: string
+    @Query('issuingType') issuingType?: string,
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
     const materialIdNum = materialId ? parseInt(materialId) : undefined;
 
     const result = await this.service.getAllIssuings(
-      pageNum, limitNum, search, sortBy, sortOrder, materialIdNum, department, status, issuingType
+      pageNum,
+      limitNum,
+      search,
+      sortBy,
+      sortOrder,
+      materialIdNum,
+      department,
+      status,
+      issuingType,
     );
     return ResponseHelper.paginated(
       result.issuings,
       result.page,
       result.limit,
       result.total,
-      'Issuings retrieved successfully'
+      'Issuings retrieved successfully',
     );
   }
 
   @Get('qr/:qrCode')
-  async getLotByQrCode(@Param('qrCode') qrCode: string) {
-    const lot = await this.service.getLotByQrCode(qrCode);
+  async getLotByQrCode(
+    @Param('qrCode') qrCode: string,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    const lot = await this.service.getLotByQrCode(qrCode, userId);
     return ResponseHelper.success(lot, 'Lot retrieved successfully');
   }
 
   @Get('qr/:qrCode/transactions')
-  async getLotTransactions(@Param('qrCode') qrCode: string) {
-    const transactions = await this.service.getLotTransactions(qrCode);
-    return ResponseHelper.success(transactions, 'Transactions retrieved successfully');
+  async getLotTransactions(
+    @Param('qrCode') qrCode: string,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    const transactions = await this.service.getLotTransactions(qrCode, userId);
+    return ResponseHelper.success(
+      transactions,
+      'Transactions retrieved successfully',
+    );
   }
 
   @Get('lots')
@@ -150,7 +211,7 @@ export class ReceivingIssuingController {
     @Query('limit') limit: string = '10',
     @Query('materialId') materialId?: string,
     @Query('status') status?: string,
-    @Query('locationId') locationId?: string
+    @Query('locationId') locationId?: string,
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
@@ -158,21 +219,28 @@ export class ReceivingIssuingController {
     const locationIdNum = locationId ? parseInt(locationId) : undefined;
 
     const result = await this.service.getAllLots(
-      pageNum, limitNum, materialIdNum, status, locationIdNum
+      pageNum,
+      limitNum,
+      materialIdNum,
+      status,
+      locationIdNum,
     );
     return ResponseHelper.paginated(
       result.lots,
       result.page,
       result.limit,
       result.total,
-      'Lots retrieved successfully'
+      'Lots retrieved successfully',
     );
   }
 
   @Get('issuing-types')
   async getAllIssuingTypes() {
     const types = await this.service.getAllIssuingTypes();
-    return ResponseHelper.success(types, 'Issuing types retrieved successfully');
+    return ResponseHelper.success(
+      types,
+      'Issuing types retrieved successfully',
+    );
   }
 
   @Get('issuing-types/:id')
@@ -185,26 +253,33 @@ export class ReceivingIssuingController {
   async getMaterialsStock(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
-    @Query('materialId') materialId?: string
+    @Query('materialId') materialId?: string,
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
     const materialIdNum = materialId ? parseInt(materialId) : undefined;
 
-    const result = await this.service.getMaterialsStock(pageNum, limitNum, materialIdNum);
+    const result = await this.service.getMaterialsStock(
+      pageNum,
+      limitNum,
+      materialIdNum,
+    );
     return ResponseHelper.paginated(
       result.stocks,
       result.page,
       result.limit,
       result.total,
-      'Material stocks retrieved successfully'
+      'Material stocks retrieved successfully',
     );
   }
 
   @Get('stock/:materialId')
   async getMaterialStock(@Param('materialId') materialId: string) {
     const stock = await this.service.getMaterialStock(parseInt(materialId));
-    return ResponseHelper.success(stock, 'Material stock retrieved successfully');
+    return ResponseHelper.success(
+      stock,
+      'Material stock retrieved successfully',
+    );
   }
 
   @Get('report/transactions')
@@ -212,8 +287,11 @@ export class ReceivingIssuingController {
     const report = await this.service.getTransactionReport(
       query.startDate,
       query.endDate,
-      query.materialId
+      query.materialId,
     );
-    return ResponseHelper.success(report, 'Transaction report retrieved successfully');
+    return ResponseHelper.success(
+      report,
+      'Transaction report retrieved successfully',
+    );
   }
 }

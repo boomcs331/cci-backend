@@ -1,10 +1,17 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { CreateDepartmentDto } from '../dto/create-department.dto';
 import { CreatePermissionDto } from '../dto/create-permission.dto';
 import { CreateRoleDto } from '../dto/create-role.dto';
+import { UpdateDepartmentDto } from '../dto/update-department.dto';
 import { UpdatePermissionDto } from '../dto/update-permission.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
+import { Department } from '../entities/department.entity';
 import { Permission } from '../entities/permission.entity';
 import { Role } from '../entities/role.entity';
 import { User } from '../entities/user.entity';
@@ -16,9 +23,13 @@ export class AuthRbacService {
     private readonly roleRepository: Repository<Role>,
     @InjectRepository(Permission)
     private readonly permissionRepository: Repository<Permission>,
+    @InjectRepository(Department)
+    private readonly departmentRepository: Repository<Department>,
   ) {}
 
-  private sanitizeUsers<T extends { passwordHash?: string }>(users: T[]): Omit<T, 'passwordHash'>[] {
+  private sanitizeUsers<T extends { passwordHash?: string }>(
+    users: T[],
+  ): Omit<T, 'passwordHash'>[] {
     return users.map((user) => {
       const { passwordHash, ...safeUser } = user;
       return safeUser;
@@ -34,7 +45,9 @@ export class AuthRbacService {
 
     const role = this.roleRepository.create({ code, ...roleData });
     if (permissionIds && permissionIds.length > 0) {
-      role.permissions = await this.permissionRepository.findBy({ id: In(permissionIds) });
+      role.permissions = await this.permissionRepository.findBy({
+        id: In(permissionIds),
+      });
     }
     return this.roleRepository.save(role);
   }
@@ -106,9 +119,13 @@ export class AuthRbacService {
     return this.sanitizeUsers(role.users) as User[];
   }
 
-  async createPermission(createPermissionDto: CreatePermissionDto): Promise<Permission> {
+  async createPermission(
+    createPermissionDto: CreatePermissionDto,
+  ): Promise<Permission> {
     const { code } = createPermissionDto;
-    const existingPermission = await this.permissionRepository.findOne({ where: { code } });
+    const existingPermission = await this.permissionRepository.findOne({
+      where: { code },
+    });
     if (existingPermission) {
       throw new ConflictException('Permission code already exists');
     }
@@ -131,9 +148,15 @@ export class AuthRbacService {
     return permission;
   }
 
-  async updatePermission(id: string, updatePermissionDto: UpdatePermissionDto): Promise<Permission> {
+  async updatePermission(
+    id: string,
+    updatePermissionDto: UpdatePermissionDto,
+  ): Promise<Permission> {
     const permission = await this.findPermissionById(id);
-    if (updatePermissionDto.code && updatePermissionDto.code !== permission.code) {
+    if (
+      updatePermissionDto.code &&
+      updatePermissionDto.code !== permission.code
+    ) {
       const existingPermission = await this.permissionRepository.findOne({
         where: { code: updatePermissionDto.code },
       });
@@ -152,7 +175,9 @@ export class AuthRbacService {
       relations: ['roles'],
     });
     if (permissionWithRoles && permissionWithRoles.roles.length > 0) {
-      throw new ConflictException('Cannot delete permission that is assigned to roles');
+      throw new ConflictException(
+        'Cannot delete permission that is assigned to roles',
+      );
     }
     await this.permissionRepository.remove(permission);
   }
@@ -184,12 +209,17 @@ export class AuthRbacService {
     return permissions.map((item) => item.module).filter(Boolean);
   }
 
-  async assignPermissionsToRole(roleId: string, permissionIds: string[]): Promise<Role> {
+  async assignPermissionsToRole(
+    roleId: string,
+    permissionIds: string[],
+  ): Promise<Role> {
     const role = await this.findRoleById(roleId);
     if (permissionIds.length === 0) {
       role.permissions = [];
     } else {
-      const permissions = await this.permissionRepository.findBy({ id: In(permissionIds) });
+      const permissions = await this.permissionRepository.findBy({
+        id: In(permissionIds),
+      });
       if (permissions.length !== permissionIds.length) {
         throw new NotFoundException('Some permissions not found');
       }
@@ -198,16 +228,26 @@ export class AuthRbacService {
     return this.roleRepository.save(role);
   }
 
-  async removePermissionFromRole(roleId: string, permissionId: string): Promise<Role> {
+  async removePermissionFromRole(
+    roleId: string,
+    permissionId: string,
+  ): Promise<Role> {
     const role = await this.findRoleById(roleId);
-    role.permissions = role.permissions.filter((permission) => permission.id !== permissionId);
+    role.permissions = role.permissions.filter(
+      (permission) => permission.id !== permissionId,
+    );
     return this.roleRepository.save(role);
   }
 
-  async addPermissionToRole(roleId: string, permissionId: string): Promise<Role> {
+  async addPermissionToRole(
+    roleId: string,
+    permissionId: string,
+  ): Promise<Role> {
     const role = await this.findRoleById(roleId);
     const permission = await this.findPermissionById(permissionId);
-    const isAlreadyAssigned = role.permissions.some((item) => item.id === permissionId);
+    const isAlreadyAssigned = role.permissions.some(
+      (item) => item.id === permissionId,
+    );
     if (isAlreadyAssigned) {
       throw new ConflictException('Permission already assigned to this role');
     }
@@ -224,5 +264,62 @@ export class AuthRbacService {
       throw new NotFoundException('Permission not found');
     }
     return permission.roles;
+  }
+
+  async createDepartment(
+    createDepartmentDto: CreateDepartmentDto,
+  ): Promise<Department> {
+    const existingDepartment = await this.departmentRepository.findOne({
+      where: { code: createDepartmentDto.code },
+    });
+    if (existingDepartment) {
+      throw new ConflictException('Department code already exists');
+    }
+
+    const department = this.departmentRepository.create(createDepartmentDto);
+    return this.departmentRepository.save(department);
+  }
+
+  async findAllDepartments(): Promise<Department[]> {
+    return this.departmentRepository.find({
+      order: { code: 'ASC' },
+    });
+  }
+
+  async findDepartmentById(id: string): Promise<Department> {
+    const department = await this.departmentRepository.findOne({
+      where: { id },
+    });
+    if (!department) {
+      throw new NotFoundException('Department not found');
+    }
+    return department;
+  }
+
+  async updateDepartment(
+    id: string,
+    updateDepartmentDto: UpdateDepartmentDto,
+  ): Promise<Department> {
+    const department = await this.findDepartmentById(id);
+
+    if (
+      updateDepartmentDto.code &&
+      updateDepartmentDto.code !== department.code
+    ) {
+      const existingDepartment = await this.departmentRepository.findOne({
+        where: { code: updateDepartmentDto.code },
+      });
+      if (existingDepartment) {
+        throw new ConflictException('Department code already exists');
+      }
+    }
+
+    Object.assign(department, updateDepartmentDto);
+    return this.departmentRepository.save(department);
+  }
+
+  async deleteDepartment(id: string): Promise<void> {
+    const department = await this.findDepartmentById(id);
+    await this.departmentRepository.remove(department);
   }
 }

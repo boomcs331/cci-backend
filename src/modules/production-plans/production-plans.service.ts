@@ -1,7 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThan, In } from 'typeorm';
-import { ProductionPlan, ProductionPlanItem, MaterialReservation, PlanStatus } from './entities';
+import {
+  ProductionPlan,
+  ProductionPlanItem,
+  MaterialReservation,
+  PlanStatus,
+} from './entities';
 import { Product, ProductBom } from '../products/entities';
 import { MaterialsStock } from '../materials/entities/materials-stock.entity';
 import {
@@ -13,6 +22,7 @@ import {
 } from './dto';
 import { ProductionOrdersService } from '../production-orders/production-orders.service';
 import { CreateProductionOrderDto } from '../production-orders/dto';
+import { ProductionOrder } from '../production-orders/entities/production-order.entity';
 
 @Injectable()
 export class ProductionPlansService {
@@ -35,7 +45,7 @@ export class ProductionPlansService {
 
   async create(dto: CreateProductionPlanDto, username: string) {
     const planCode = await this.generatePlanCode();
-    
+
     const plan = this.planRepo.create({
       planCode,
       planName: dto.planName,
@@ -74,8 +84,9 @@ export class ProductionPlansService {
 
   /**
    * สร้าง Production Order + รายการ QR (production_lots) ตามจำนวน ceil(quantity / lotSize) ต่อรายการในแผน
-   * lotSize: defaultLotSize หรือ lotSizeByProductId[productId] หรือ products.lot_size หรือ 100
-   * อนุญาตเฉพาะแผนที่ยืนยันแล้ว (confirmed) เท่านั้น
+   * รูปแบบ QR เดียวกับรับเข้าวัตถุดิบ (buildInventoryStyleQrCode จาก lot_no แบบ PG…)
+   * lotSize: defaultLotSize หรือ lotSizeByProductId[productId] หรือ products.lot_size (จำนวนต่อบรรจุ) หรือ 100
+   * แผนต้อง reserved หรือ confirmed
    */
   async generateProductQrOrdersFromPlan(
     planId: number,
@@ -83,14 +94,19 @@ export class ProductionPlansService {
     username: string,
   ) {
     const plan = await this.findOne(planId);
-    if (plan.status !== PlanStatus.CONFIRMED) {
+    if (
+      plan.status !== PlanStatus.CONFIRMED &&
+      plan.status !== PlanStatus.RESERVED
+    ) {
       throw new BadRequestException(
-        'สร้างคำสั่งผลิต / QR ได้เมื่อแผนอยู่ในสถานะยืนยันแล้ว (confirmed) เท่านั้น — ให้ยืนยันแผนก่อน',
+        'สร้างคำสั่งผลิต / QR ได้เมื่อแผนถูกจอง (reserved) หรือยืนยันแล้ว (confirmed) เท่านั้น — จองวัตถุดิบก่อน หรือยืนยันแผน',
       );
     }
     if (!plan.items?.length) {
       throw new BadRequestException('แผนไม่มีรายการสินค้า');
     }
+
+    const itemsOrdered = [...plan.items].sort((a, b) => a.id - b.id);
 
     const results: Array<{
       planItemId: number;
@@ -98,10 +114,12 @@ export class ProductionPlansService {
       quantity: number;
       lotSize: number;
       totalQrCodes: number;
-      productionOrder: NonNullable<Awaited<ReturnType<ProductionOrdersService['findOrderWithLots']>>>;
+      productionOrder: NonNullable<
+        Awaited<ReturnType<ProductionOrdersService['findOrderWithLots']>>
+      >;
     }> = [];
 
-    for (const item of plan.items) {
+    for (const item of itemsOrdered) {
       if (dto.planItemIds?.length && !dto.planItemIds.includes(item.id)) {
         continue;
       }
@@ -130,10 +148,17 @@ export class ProductionPlansService {
         createDto.lotSize = lotSizeOpt;
       }
 
-      const productionOrder = await this.productionOrdersService.createProductionOrder(
-        createDto,
-        username,
-      );
+      const existing =
+        await this.productionOrdersService.findOrderByPlanAndPlanItem(
+          plan.id,
+          item.id,
+        );
+      const productionOrder = existing
+        ? await this.productionOrdersService.findOrderWithLots(existing.id)
+        : await this.productionOrdersService.createProductionOrder(
+            createDto,
+            username,
+          );
 
       results.push({
         planItemId: item.id,
@@ -163,23 +188,30 @@ export class ProductionPlansService {
         productionOrderId: r.productionOrder.id,
         orderNo: r.productionOrder.orderNo,
       })),
-      orders: results.map((r) => r.productionOrder),
+      orders: results.map((r) =>
+        this.serializeProductionOrderForPlanQrResponse(
+          r.productionOrder,
+          r.planItemId,
+        ),
+      ),
     };
   }
 
   async update(id: number, dto: UpdateProductionPlanDto, username: string) {
     const plan = await this.findOne(id);
-    
+
     if (plan.status !== PlanStatus.DRAFT) {
-      throw new BadRequestException('สามารถแก้ไขได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น');
+      throw new BadRequestException(
+        'สามารถแก้ไขได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น',
+      );
     }
 
     Object.assign(plan, {
       planName: dto.planName,
       remarks: dto.remarks,
-      updateBy: username
+      updateBy: username,
     });
-    
+
     if (dto.planDate) {
       plan.planDate = new Date(dto.planDate);
     }
@@ -190,7 +222,7 @@ export class ProductionPlansService {
     if (dto.items) {
       // Delete existing items
       await this.itemRepo.delete({ planId: id });
-      
+
       // Add new items
       for (const item of dto.items) {
         await this.addItem(id, item);
@@ -202,7 +234,7 @@ export class ProductionPlansService {
 
   async remove(id: number) {
     const plan = await this.findOne(id);
-    
+
     if (plan.status === PlanStatus.CONFIRMED) {
       throw new BadRequestException('ไม่สามารถลบแผนที่ยืนยันแล้ว');
     }
@@ -213,12 +245,16 @@ export class ProductionPlansService {
 
   async addItem(planId: number, dto: AddPlanItemDto) {
     const plan = await this.findOne(planId);
-    
+
     if (plan.status !== PlanStatus.DRAFT) {
-      throw new BadRequestException('สามารถเพิ่มรายการได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น');
+      throw new BadRequestException(
+        'สามารถเพิ่มรายการได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น',
+      );
     }
 
-    const product = await this.productRepo.findOne({ where: { id: dto.productId } });
+    const product = await this.productRepo.findOne({
+      where: { id: dto.productId },
+    });
     if (!product) throw new NotFoundException('ไม่พบสินค้า');
 
     const item = this.itemRepo.create({
@@ -232,11 +268,18 @@ export class ProductionPlansService {
     return this.itemRepo.save(item);
   }
 
-  async updateItem(planId: number, itemId: number, dto: UpdatePlanItemDto, username: string) {
+  async updateItem(
+    planId: number,
+    itemId: number,
+    dto: UpdatePlanItemDto,
+    username: string,
+  ) {
     const plan = await this.findOne(planId);
-    
+
     if (plan.status !== PlanStatus.DRAFT) {
-      throw new BadRequestException('สามารถแก้ไขรายการได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น');
+      throw new BadRequestException(
+        'สามารถแก้ไขรายการได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น',
+      );
     }
 
     const item = await this.itemRepo.findOne({ where: { id: itemId, planId } });
@@ -248,9 +291,11 @@ export class ProductionPlansService {
 
   async removeItem(planId: number, itemId: number) {
     const plan = await this.findOne(planId);
-    
+
     if (plan.status !== PlanStatus.DRAFT) {
-      throw new BadRequestException('สามารถลบรายการได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น');
+      throw new BadRequestException(
+        'สามารถลบรายการได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น',
+      );
     }
 
     const item = await this.itemRepo.findOne({ where: { id: itemId, planId } });
@@ -262,9 +307,11 @@ export class ProductionPlansService {
 
   async reserveMaterials(planId: number, username: string) {
     const plan = await this.findOne(planId);
-    
+
     if (plan.status !== PlanStatus.DRAFT) {
-      throw new BadRequestException('สามารถจองได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น');
+      throw new BadRequestException(
+        'สามารถจองได้เฉพาะแผนที่อยู่ในสถานะ draft เท่านั้น',
+      );
     }
 
     if (!plan.items?.length) {
@@ -286,9 +333,11 @@ export class ProductionPlansService {
         });
 
         if (!boms || boms.length === 0) {
-          const product = await this.productRepo.findOne({ where: { id: item.productId } });
+          const product = await this.productRepo.findOne({
+            where: { id: item.productId },
+          });
           throw new BadRequestException(
-            `สินค้า "${product?.productName || item.productId}" ยังไม่มี BOM (Bill of Materials) กรุณาเพิ่ม BOM ก่อนสร้างแผนการผลิต`
+            `สินค้า "${product?.productName || item.productId}" ยังไม่มี BOM (Bill of Materials) กรุณาเพิ่ม BOM ก่อนสร้างแผนการผลิต`,
           );
         }
 
@@ -301,15 +350,15 @@ export class ProductionPlansService {
 
       // ตรวจสอบว่ามีวัตถุดิบเพียงพอทั้งหมดก่อน
       const insufficientMaterials: any[] = [];
-      
+
       for (const [materialId, requiredQty] of materialRequirements) {
         // ดึงข้อมูลจาก materials_stock ก่อน
         const stock = await queryRunner.manager.findOne(MaterialsStock, {
-          where: { materialId }
+          where: { materialId },
         });
 
         let availableQty = 0;
-        
+
         if (stock) {
           // ใช้ available_qty จาก stock (ยอดที่พร้อมใช้งาน = total - reserved)
           availableQty = Number(stock.availableQty || 0);
@@ -320,41 +369,47 @@ export class ProductionPlansService {
             .select('COALESCE(SUM(remaining_quantity), 0)', 'total')
             .from('material_receiving_lots', 'ml')
             .where('ml.material_id = :materialId', { materialId })
-            .andWhere('ml.status IN (:...statuses)', { statuses: ['AVAILABLE', 'PARTIAL_USED'] })
+            .andWhere('ml.status IN (:...statuses)', {
+              statuses: ['AVAILABLE', 'PARTIAL_USED'],
+            })
             .andWhere('ml.remaining_quantity > 0')
             .getRawOne();
-          
+
           const totalInLotsQty = Number(totalInLots.total);
-          
+
           // หักยอดที่ถูกจองโดยแผนอื่น (เฉพาะแผนที่อยู่ในสถานะ RESERVED เท่านั้น)
           const existingReservations = await queryRunner.manager.query(
             `SELECT COALESCE(SUM(mr.reserved_quantity), 0) as reserved 
              FROM material_reservations mr
              JOIN production_plans pp ON mr.plan_id = pp.id
              WHERE mr.material_id = $1 AND mr.plan_id != $2 AND pp.status = 'reserved'`,
-            [materialId, planId]
+            [materialId, planId],
           );
-          
-          const reservedByOthers = Number(existingReservations[0]?.reserved || 0);
+
+          const reservedByOthers = Number(
+            existingReservations[0]?.reserved || 0,
+          );
           availableQty = totalInLotsQty - reservedByOthers;
         }
-        
+
         console.log(`[Reserve Check] Material ID: ${materialId}`);
         console.log(`  - Required: ${requiredQty}`);
         console.log(`  - Available (from stock or lots): ${availableQty}`);
 
         const material = await queryRunner.manager.query(
-          'SELECT mat_code, mat_name FROM materials WHERE id = $1',
-          [materialId]
+          'SELECT mat_code, mat_name FROM master.materials WHERE id = $1',
+          [materialId],
         );
-        
+
         // ดึงข้อมูลเพิ่มเติมเพื่อแสดง error ที่ละเอียด
-        const stockInfo = stock ? {
-          totalQty: Number(stock.totalQty),
-          availableQty: Number(stock.availableQty),
-          reservedQty: Number(stock.reservedQty)
-        } : null;
-        
+        const stockInfo = stock
+          ? {
+              totalQty: Number(stock.totalQty),
+              availableQty: Number(stock.availableQty),
+              reservedQty: Number(stock.reservedQty),
+            }
+          : null;
+
         insufficientMaterials.push({
           materialId,
           materialCode: material[0]?.mat_code || `ID-${materialId}`,
@@ -363,23 +418,25 @@ export class ProductionPlansService {
           available: availableQty,
           shortage: Math.max(0, requiredQty - availableQty),
           isInsufficient: availableQty < requiredQty,
-          stock: stockInfo
+          stock: stockInfo,
         });
       }
-      
+
       // กรองเฉพาะรายการที่ไม่พอ
-      const notEnoughMaterials = insufficientMaterials.filter(m => m.isInsufficient);
-      
+      const notEnoughMaterials = insufficientMaterials.filter(
+        (m) => m.isInsufficient,
+      );
+
       // ถ้ามีวัตถุดิบไม่พอ ให้ rollback และ return รายการทั้งหมด
       if (notEnoughMaterials.length > 0) {
         await queryRunner.rollbackTransaction();
-        
+
         return {
           success: false,
           canReserve: false,
           message: `วัตถุดิบไม่เพียงพอ (${notEnoughMaterials.length} รายการ)`,
           insufficientMaterials: notEnoughMaterials,
-          allMaterials: insufficientMaterials
+          allMaterials: insufficientMaterials,
         };
       }
 
@@ -397,20 +454,23 @@ export class ProductionPlansService {
              CAST(RIGHT(lot_no, 3) AS INTEGER) ASC,
              create_date ASC, 
              id ASC`,
-          [materialId]
+          [materialId],
         );
 
         for (const lot of lots) {
           if (remainingQty <= 0) break;
 
-          const reserveQty = Math.min(Number(lot.remaining_quantity), remainingQty);
+          const reserveQty = Math.min(
+            Number(lot.remaining_quantity),
+            remainingQty,
+          );
 
           // บันทึกการจอง (ไม่ลด remaining_quantity ที่นี่)
           await queryRunner.manager.query(
             `INSERT INTO material_reservations 
              (plan_id, material_id, reserved_quantity, lot_number, receive_date, create_date) 
              VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [planId, materialId, reserveQty, lot.lot_no, lot.create_date]
+            [planId, materialId, reserveQty, lot.lot_no, lot.create_date],
           );
 
           remainingQty -= reserveQty;
@@ -421,7 +481,7 @@ export class ProductionPlansService {
       for (const [materialId, requiredQty] of materialRequirements) {
         const stockExists = await queryRunner.manager.query(
           `SELECT material_id FROM materials_stock WHERE material_id = $1`,
-          [materialId]
+          [materialId],
         );
 
         if (!stockExists || stockExists.length === 0) {
@@ -430,14 +490,14 @@ export class ProductionPlansService {
             `SELECT COALESCE(SUM(remaining_quantity), 0) as total
              FROM material_receiving_lots 
              WHERE material_id = $1 AND status IN ('AVAILABLE', 'PARTIAL_USED')`,
-            [materialId]
+            [materialId],
           );
           const totalQty = Number(totalInLots[0]?.total || 0);
-          
+
           await queryRunner.manager.query(
             `INSERT INTO materials_stock (material_id, total_qty, available_qty, reserved_qty) 
              VALUES ($1, $2, $3, $4)`,
-            [materialId, totalQty, totalQty - requiredQty, requiredQty]
+            [materialId, totalQty, totalQty - requiredQty, requiredQty],
           );
         } else {
           await queryRunner.manager.query(
@@ -445,7 +505,7 @@ export class ProductionPlansService {
              SET available_qty = available_qty - $1, 
                  reserved_qty = reserved_qty + $1 
              WHERE material_id = $2`,
-            [requiredQty, materialId]
+            [requiredQty, materialId],
           );
         }
       }
@@ -460,7 +520,7 @@ export class ProductionPlansService {
         canReserve: true,
         message: 'จองวัตถุดิบสำเร็จ',
         plan: await this.findOne(planId),
-        allMaterials: insufficientMaterials
+        allMaterials: insufficientMaterials,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -473,22 +533,26 @@ export class ProductionPlansService {
 
   async confirm(planId: number, username: string) {
     const plan = await this.findOne(planId);
-    
+
     if (plan.status !== PlanStatus.RESERVED) {
-      throw new BadRequestException('สามารถยืนยันได้เฉพาะแผนที่จอง material แล้ว');
+      throw new BadRequestException(
+        'สามารถยืนยันได้เฉพาะแผนที่จอง material แล้ว',
+      );
     }
 
     plan.status = PlanStatus.CONFIRMED;
     plan.updateBy = username;
-    
+
     return this.planRepo.save(plan);
   }
 
   async confirmAndIssue(planId: number, username: string) {
     const plan = await this.findOne(planId);
-    
+
     if (plan.status !== PlanStatus.RESERVED) {
-      throw new BadRequestException('สามารถยืนยันและจ่ายออกได้เฉพาะแผนที่จอง material แล้ว');
+      throw new BadRequestException(
+        'สามารถยืนยันและจ่ายออกได้เฉพาะแผนที่จอง material แล้ว',
+      );
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -498,7 +562,7 @@ export class ProductionPlansService {
     try {
       const reservations = await queryRunner.manager.find(MaterialReservation, {
         where: { planId },
-        relations: ['material']
+        relations: ['material'],
       });
 
       if (!reservations.length) {
@@ -512,7 +576,12 @@ export class ProductionPlansService {
          (issue_no, issue_date, issue_type, production_order_no, remarks, status, create_date, create_by, update_date, update_by) 
          VALUES ($1, NOW(), 'PRODUCTION', $2, $3, 'COMPLETED', NOW(), $4, NOW(), $4)
          RETURNING id`,
-        [issueNo, plan.planCode, `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`, username]
+        [
+          issueNo,
+          plan.planCode,
+          `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
+          username,
+        ],
       );
 
       const issueId = issue[0].id;
@@ -523,7 +592,13 @@ export class ProductionPlansService {
           `INSERT INTO material_issue_items 
            (issue_id, material_id, issued_quantity, unit, create_date, create_by) 
            VALUES ($1, $2, $3, $4, NOW(), $5)`,
-          [issueId, reservation.materialId, reservation.reservedQuantity, reservation.material?.unitMaster?.name || 'unit', username]
+          [
+            issueId,
+            reservation.materialId,
+            reservation.reservedQuantity,
+            reservation.material?.unitMaster?.name || 'unit',
+            username,
+          ],
         );
       }
 
@@ -531,9 +606,9 @@ export class ProductionPlansService {
       for (const reservation of reservations) {
         const issuingNo = await this.generateIssuingNo(queryRunner);
         const issuingType = await queryRunner.manager.query(
-          `SELECT id FROM issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`
+          `SELECT id FROM master.issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`,
         );
-        
+
         const issuing = await queryRunner.manager.query(
           `INSERT INTO material_issuing 
            (issuing_no, material_id, total_quantity, unit, issuing_date, issuing_type_id, 
@@ -547,8 +622,8 @@ export class ProductionPlansService {
             reservation.material?.unitMaster?.name || 'unit',
             issuingType[0]?.id,
             `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
-            username
-          ]
+            username,
+          ],
         );
 
         const issuingId = issuing[0].id;
@@ -564,7 +639,7 @@ export class ProductionPlansService {
              CAST(RIGHT(lot_no, 3) AS INTEGER) ASC,
              create_date ASC, 
              id ASC`,
-          [reservation.materialId]
+          [reservation.materialId],
         );
 
         let remainingToIssue = Number(reservation.reservedQuantity);
@@ -572,25 +647,35 @@ export class ProductionPlansService {
         for (const lot of availableLots) {
           if (remainingToIssue <= 0) break;
 
-          const issueFromThisLot = Math.min(Number(lot.remaining_quantity), remainingToIssue);
+          const issueFromThisLot = Math.min(
+            Number(lot.remaining_quantity),
+            remainingToIssue,
+          );
 
           // บันทึก material_issuing_lots
           await queryRunner.manager.query(
             `INSERT INTO material_issuing_lots 
              (issuing_id, lot_id, qr_code, quantity, unit) 
              VALUES ($1, $2, $3, $4, $5)`,
-            [issuingId, lot.id, lot.qr_code, issueFromThisLot, reservation.material?.unitMaster?.name || 'unit']
+            [
+              issuingId,
+              lot.id,
+              lot.qr_code,
+              issueFromThisLot,
+              reservation.material?.unitMaster?.name || 'unit',
+            ],
           );
 
           // อัพเดท lot
-          const newRemaining = Number(lot.remaining_quantity) - issueFromThisLot;
+          const newRemaining =
+            Number(lot.remaining_quantity) - issueFromThisLot;
           const newStatus = newRemaining === 0 ? 'USED_UP' : 'PARTIAL_USED';
-          
+
           await queryRunner.manager.query(
             `UPDATE material_receiving_lots 
              SET remaining_quantity = $1, status = $2 
              WHERE id = $3`,
-            [newRemaining, newStatus, lot.id]
+            [newRemaining, newStatus, lot.id],
           );
 
           // สร้าง transaction log
@@ -599,7 +684,17 @@ export class ProductionPlansService {
             `INSERT INTO material_transactions 
              (transaction_no, transaction_type, transaction_date, material_id, lot_id, qr_code, quantity, remaining_quantity, reference_no, remark, create_by) 
              VALUES ($1, 'ISSUE', NOW(), $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [txnNo, reservation.materialId, lot.id, lot.qr_code, -issueFromThisLot, newRemaining, issuingNo, `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`, username]
+            [
+              txnNo,
+              reservation.materialId,
+              lot.id,
+              lot.qr_code,
+              -issueFromThisLot,
+              newRemaining,
+              issuingNo,
+              `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
+              username,
+            ],
           );
 
           remainingToIssue -= issueFromThisLot;
@@ -607,11 +702,14 @@ export class ProductionPlansService {
       }
 
       // อัพเดท materials_stock
-      const materialTotals = reservations.reduce((acc, r) => {
-        const qty = Number(r.reservedQuantity);
-        acc[r.materialId] = (acc[r.materialId] || 0) + qty;
-        return acc;
-      }, {} as Record<number, number>);
+      const materialTotals = reservations.reduce(
+        (acc, r) => {
+          const qty = Number(r.reservedQuantity);
+          acc[r.materialId] = (acc[r.materialId] || 0) + qty;
+          return acc;
+        },
+        {} as Record<number, number>,
+      );
 
       for (const [materialId, totalQty] of Object.entries(materialTotals)) {
         await queryRunner.manager.query(
@@ -619,7 +717,7 @@ export class ProductionPlansService {
            SET total_qty = total_qty - $1, 
                reserved_qty = reserved_qty - $1 
            WHERE material_id = $2`,
-          [totalQty, materialId]
+          [totalQty, materialId],
         );
       }
 
@@ -632,10 +730,12 @@ export class ProductionPlansService {
       await queryRunner.manager.save(plan);
 
       await queryRunner.commitTransaction();
-      
-      console.log(`[Confirm & Issue] Plan ${planId} confirmed and materials issued successfully`);
-      
-      return this.findOne(planId);
+
+      console.log(
+        `[Confirm & Issue] Plan ${planId} confirmed and materials issued successfully`,
+      );
+
+      return this.finalizePlanAfterIssueWithProductionQr(planId, username);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -646,7 +746,7 @@ export class ProductionPlansService {
 
   async issueMaterials(planId: number, username: string) {
     const plan = await this.findOne(planId);
-    
+
     if (plan.status !== PlanStatus.RESERVED) {
       throw new BadRequestException('สามารถจัดงานได้เฉพาะแผนที่จองแล้ว');
     }
@@ -657,7 +757,7 @@ export class ProductionPlansService {
 
     try {
       const reservations = await queryRunner.manager.find(MaterialReservation, {
-        where: { planId }
+        where: { planId },
       });
 
       if (!reservations.length) {
@@ -671,7 +771,12 @@ export class ProductionPlansService {
          (issue_no, issue_date, issue_type, production_order_no, remarks, status, create_date, create_by, update_date, update_by) 
          VALUES ($1, NOW(), 'PRODUCTION', $2, $3, 'COMPLETED', NOW(), $4, NOW(), $4)
          RETURNING id`,
-        [issueNo, plan.planCode, `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`, username]
+        [
+          issueNo,
+          plan.planCode,
+          `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
+          username,
+        ],
       );
 
       const issueId = issue[0].id;
@@ -682,15 +787,20 @@ export class ProductionPlansService {
           `INSERT INTO material_issue_items 
            (issue_id, material_id, issued_quantity, unit, create_date, create_by) 
            VALUES ($1, $2, $3, 'unit', NOW(), $4)`,
-          [issueId, reservation.materialId, reservation.reservedQuantity, username]
+          [
+            issueId,
+            reservation.materialId,
+            reservation.reservedQuantity,
+            username,
+          ],
         );
 
         // สร้าง material_issuing สำหรับแต่ละ material
         const issuingNo = await this.generateIssuingNo(queryRunner);
         const issuingType = await queryRunner.manager.query(
-          `SELECT id FROM issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`
+          `SELECT id FROM master.issuing_types WHERE code = 'WORK_ORDER' LIMIT 1`,
         );
-        
+
         const issuing = await queryRunner.manager.query(
           `INSERT INTO material_issuing 
            (issuing_no, material_id, total_quantity, unit, issuing_date, issuing_type_id, 
@@ -703,8 +813,8 @@ export class ProductionPlansService {
             reservation.reservedQuantity,
             issuingType[0]?.id,
             `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`,
-            username
-          ]
+            username,
+          ],
         );
 
         const issuingId = issuing[0].id;
@@ -720,7 +830,7 @@ export class ProductionPlansService {
              CAST(RIGHT(lot_no, 3) AS INTEGER) ASC,
              create_date ASC, 
              id ASC`,
-          [reservation.materialId]
+          [reservation.materialId],
         );
 
         let remainingToIssue = Number(reservation.reservedQuantity);
@@ -728,36 +838,43 @@ export class ProductionPlansService {
         for (const lot of availableLots) {
           if (remainingToIssue <= 0) break;
 
-          const issueFromThisLot = Math.min(Number(lot.remaining_quantity), remainingToIssue);
+          const issueFromThisLot = Math.min(
+            Number(lot.remaining_quantity),
+            remainingToIssue,
+          );
 
           // บันทึก material_issuing_lots
           await queryRunner.manager.query(
             `INSERT INTO material_issuing_lots 
              (issuing_id, lot_id, qr_code, quantity, unit) 
              VALUES ($1, $2, $3, $4, 'unit')`,
-            [issuingId, lot.id, lot.qr_code, issueFromThisLot]
+            [issuingId, lot.id, lot.qr_code, issueFromThisLot],
           );
 
           // อัพเดท lot
-          const newRemaining = Number(lot.remaining_quantity) - issueFromThisLot;
+          const newRemaining =
+            Number(lot.remaining_quantity) - issueFromThisLot;
           const newStatus = newRemaining === 0 ? 'USED_UP' : 'PARTIAL_USED';
-          
+
           await queryRunner.manager.query(
             `UPDATE material_receiving_lots 
              SET remaining_quantity = $1, status = $2 
              WHERE id = $3`,
-            [newRemaining, newStatus, lot.id]
+            [newRemaining, newStatus, lot.id],
           );
 
           remainingToIssue -= issueFromThisLot;
         }
       }
 
-      const materialTotals = reservations.reduce((acc, r) => {
-        const qty = Number(r.reservedQuantity);
-        acc[r.materialId] = (acc[r.materialId] || 0) + qty;
-        return acc;
-      }, {} as Record<number, number>);
+      const materialTotals = reservations.reduce(
+        (acc, r) => {
+          const qty = Number(r.reservedQuantity);
+          acc[r.materialId] = (acc[r.materialId] || 0) + qty;
+          return acc;
+        },
+        {} as Record<number, number>,
+      );
 
       for (const [materialId, totalQty] of Object.entries(materialTotals)) {
         await queryRunner.manager.query(
@@ -765,7 +882,7 @@ export class ProductionPlansService {
            SET total_qty = total_qty - $1, 
                reserved_qty = reserved_qty - $1 
            WHERE material_id = $2`,
-          [totalQty, materialId]
+          [totalQty, materialId],
         );
       }
 
@@ -777,10 +894,12 @@ export class ProductionPlansService {
       await queryRunner.manager.save(plan);
 
       await queryRunner.commitTransaction();
-      
-      console.log(`[Issue Materials] Plan ${planId} materials issued successfully`);
-      
-      return this.findOne(planId);
+
+      console.log(
+        `[Issue Materials] Plan ${planId} materials issued successfully`,
+      );
+
+      return this.finalizePlanAfterIssueWithProductionQr(planId, username);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -792,7 +911,7 @@ export class ProductionPlansService {
   async cancel(planId: number, username: string) {
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     if (!plan) throw new NotFoundException('ไม่พบแผนการผลิต');
-    
+
     if (plan.status === PlanStatus.CONFIRMED) {
       throw new BadRequestException('ไม่สามารถยกเลิกแผนที่ยืนยันแล้ว');
     }
@@ -803,8 +922,11 @@ export class ProductionPlansService {
 
     try {
       if (plan.status === PlanStatus.RESERVED) {
-        const reservations = await queryRunner.manager.find(MaterialReservation, { where: { planId } });
-        
+        const reservations = await queryRunner.manager.find(
+          MaterialReservation,
+          { where: { planId } },
+        );
+
         // คืน stock summary (ไม่ต้องคืน remaining_quantity ใน lots เพราะไม่ได้ลดตอนจอง)
         for (const reservation of reservations) {
           const stock = await queryRunner.manager.findOne(MaterialsStock, {
@@ -828,9 +950,9 @@ export class ProductionPlansService {
       await queryRunner.manager.save(plan);
 
       await queryRunner.commitTransaction();
-      
+
       console.log(`[Cancel] Plan ${planId} cancelled successfully`);
-      
+
       return this.findOne(planId);
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -852,7 +974,9 @@ export class ProductionPlansService {
       .createQueryBuilder('res')
       .innerJoin('res.material', 'material')
       .innerJoin('res.plan', 'plan')
-      .where('plan.status IN (:...statuses)', { statuses: [PlanStatus.RESERVED, PlanStatus.CONFIRMED] })
+      .where('plan.status IN (:...statuses)', {
+        statuses: [PlanStatus.RESERVED, PlanStatus.CONFIRMED],
+      })
       .select([
         'res.materialId',
         'res.reservedQuantity',
@@ -861,7 +985,7 @@ export class ProductionPlansService {
         'material.id',
         'material.matCode',
         'material.matName',
-        'plan.planCode'
+        'plan.planCode',
       ])
       .orderBy('res.materialId', 'ASC')
       .getMany();
@@ -874,7 +998,7 @@ export class ProductionPlansService {
           materialCode: res.material.matCode,
           materialName: res.material.matName,
           totalReserved: 0,
-          details: []
+          details: [],
         };
       }
       acc[key].totalReserved += Number(res.reservedQuantity);
@@ -882,7 +1006,7 @@ export class ProductionPlansService {
         planCode: res.plan.planCode,
         lotNumber: res.lotNumber,
         quantity: Number(res.reservedQuantity),
-        receiveDate: res.receiveDate
+        receiveDate: res.receiveDate,
       });
       return acc;
     }, {});
@@ -904,10 +1028,12 @@ export class ProductionPlansService {
          FROM material_reservations mr
          JOIN production_plans pp ON mr.plan_id = pp.id
          WHERE pp.status = 'confirmed'
-         GROUP BY mr.lot_number`
+         GROUP BY mr.lot_number`,
       );
 
-      console.log(`Found ${confirmedReservations.length} lots with confirmed reservations`);
+      console.log(
+        `Found ${confirmedReservations.length} lots with confirmed reservations`,
+      );
 
       // คืนค่า remaining_quantity สำหรับ lots ที่ถูกลดไปแล้ว
       for (const res of confirmedReservations) {
@@ -915,23 +1041,25 @@ export class ProductionPlansService {
           `UPDATE material_receiving_lots 
            SET remaining_quantity = remaining_quantity + $1 
            WHERE lot_no = $2`,
-          [res.total_reserved, res.lot_number]
+          [res.total_reserved, res.lot_number],
         );
-        console.log(`Fixed lot ${res.lot_number}: added back ${res.total_reserved}`);
+        console.log(
+          `Fixed lot ${res.lot_number}: added back ${res.total_reserved}`,
+        );
       }
 
       // 2. ลบการจองของแผนที่ CONFIRMED
       const deleteResult = await queryRunner.manager.query(
         `DELETE FROM material_reservations
          WHERE plan_id IN (SELECT id FROM production_plans WHERE status = 'confirmed')
-         RETURNING *`
+         RETURNING *`,
       );
 
       console.log(`Deleted ${deleteResult.length} confirmed reservations`);
 
       // 3. ซิงค์ข้อมูล materials_stock กับ material_receiving_lots
       const allMaterials = await queryRunner.manager.query(
-        `SELECT DISTINCT material_id FROM material_receiving_lots`
+        `SELECT DISTINCT material_id FROM material_receiving_lots`,
       );
 
       console.log(`Syncing stock for ${allMaterials.length} materials`);
@@ -946,7 +1074,7 @@ export class ProductionPlansService {
              COALESCE(SUM(remaining_quantity), 0) as total_remaining
            FROM material_receiving_lots 
            WHERE material_id = $1 AND status IN ('AVAILABLE', 'PARTIAL_USED')`,
-          [materialId]
+          [materialId],
         );
 
         // คำนวณจำนวนที่ถูกจองจริง (เฉพาะแผนที่ RESERVED)
@@ -955,7 +1083,7 @@ export class ProductionPlansService {
            FROM material_reservations mr
            JOIN production_plans pp ON mr.plan_id = pp.id
            WHERE mr.material_id = $1 AND pp.status = 'reserved'`,
-          [materialId]
+          [materialId],
         );
 
         const totalRemaining = Number(lotSummary[0].total_remaining);
@@ -966,7 +1094,7 @@ export class ProductionPlansService {
         // อัพเดท materials_stock
         const stockExists = await queryRunner.manager.query(
           `SELECT material_id FROM materials_stock WHERE material_id = $1`,
-          [materialId]
+          [materialId],
         );
 
         if (stockExists && stockExists.length > 0) {
@@ -974,29 +1102,33 @@ export class ProductionPlansService {
             `UPDATE materials_stock 
              SET total_qty = $1, available_qty = $2, reserved_qty = $3
              WHERE material_id = $4`,
-            [totalQty, availableQty, totalReserved, materialId]
+            [totalQty, availableQty, totalReserved, materialId],
           );
-          console.log(`Updated stock for material ${materialId}: total=${totalQty}, available=${availableQty}, reserved=${totalReserved}`);
+          console.log(
+            `Updated stock for material ${materialId}: total=${totalQty}, available=${availableQty}, reserved=${totalReserved}`,
+          );
         } else {
           await queryRunner.manager.query(
             `INSERT INTO materials_stock (material_id, total_qty, available_qty, reserved_qty)
              VALUES ($1, $2, $3, $4)`,
-            [materialId, totalQty, availableQty, totalReserved]
+            [materialId, totalQty, availableQty, totalReserved],
           );
-          console.log(`Created stock for material ${materialId}: total=${totalQty}, available=${availableQty}, reserved=${totalReserved}`);
+          console.log(
+            `Created stock for material ${materialId}: total=${totalQty}, available=${availableQty}, reserved=${totalReserved}`,
+          );
         }
       }
 
       await queryRunner.commitTransaction();
-      
+
       console.log('=== Fix Completed Successfully ===');
-      
+
       return {
         success: true,
         message: 'แก้ไขข้อมูล remaining_quantity และซิงค์ stock สำเร็จ',
         lotsFixed: confirmedReservations.length,
         reservationsDeleted: deleteResult.length,
-        materialsUpdated: allMaterials.length
+        materialsUpdated: allMaterials.length,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -1011,8 +1143,8 @@ export class ProductionPlansService {
     try {
       // หา material ID
       const material = await this.dataSource.query(
-        `SELECT id, mat_code, mat_name FROM materials WHERE mat_code = $1 OR mat_name LIKE $2`,
-        [materialCode, `%${materialCode}%`]
+        `SELECT id, mat_code, mat_name FROM master.materials WHERE mat_code = $1 OR mat_name LIKE $2`,
+        [materialCode, `%${materialCode}%`],
       );
 
       if (!material || material.length === 0) {
@@ -1024,7 +1156,7 @@ export class ProductionPlansService {
       // ข้อมูล stock
       const stock = await this.dataSource.query(
         `SELECT * FROM materials_stock WHERE material_id = $1`,
-        [materialId]
+        [materialId],
       );
 
       // ข้อมูล lots
@@ -1033,7 +1165,7 @@ export class ProductionPlansService {
          FROM material_receiving_lots 
          WHERE material_id = $1
          ORDER BY create_date`,
-        [materialId]
+        [materialId],
       );
 
       // ข้อมูลการจอง
@@ -1043,7 +1175,7 @@ export class ProductionPlansService {
          JOIN production_plans pp ON mr.plan_id = pp.id
          WHERE mr.material_id = $1
          ORDER BY mr.create_date`,
-        [materialId]
+        [materialId],
       );
 
       // ข้อมูล transactions
@@ -1054,7 +1186,7 @@ export class ProductionPlansService {
          WHERE mt.material_id = $1
          ORDER BY mt.transaction_date DESC
          LIMIT 20`,
-        [materialId]
+        [materialId],
       );
 
       return {
@@ -1065,12 +1197,25 @@ export class ProductionPlansService {
         transactions,
         summary: {
           totalLots: lots.length,
-          totalReceived: lots.reduce((sum, lot) => sum + Number(lot.received_quantity), 0),
-          totalRemaining: lots.reduce((sum, lot) => sum + Number(lot.remaining_quantity), 0),
-          totalReserved: reservations.reduce((sum, r) => sum + Number(r.reserved_quantity), 0),
-          activeReservations: reservations.filter(r => r.plan_status === 'reserved').length,
-          confirmedReservations: reservations.filter(r => r.plan_status === 'confirmed').length
-        }
+          totalReceived: lots.reduce(
+            (sum, lot) => sum + Number(lot.received_quantity),
+            0,
+          ),
+          totalRemaining: lots.reduce(
+            (sum, lot) => sum + Number(lot.remaining_quantity),
+            0,
+          ),
+          totalReserved: reservations.reduce(
+            (sum, r) => sum + Number(r.reserved_quantity),
+            0,
+          ),
+          activeReservations: reservations.filter(
+            (r) => r.plan_status === 'reserved',
+          ).length,
+          confirmedReservations: reservations.filter(
+            (r) => r.plan_status === 'confirmed',
+          ).length,
+        },
       };
     } catch (error) {
       console.error('Debug material error:', error);
@@ -1082,8 +1227,8 @@ export class ProductionPlansService {
     try {
       // ดึงข้อมูลวัตถุดิบ
       const material = await this.dataSource.query(
-        `SELECT id, mat_code, mat_name FROM materials WHERE id = $1`,
-        [materialId]
+        `SELECT id, mat_code, mat_name FROM master.materials WHERE id = $1`,
+        [materialId],
       );
 
       if (!material || material.length === 0) {
@@ -1099,7 +1244,7 @@ export class ProductionPlansService {
          WHERE material_id = $1 
          AND status IN ('AVAILABLE', 'PARTIAL_USED') 
          AND remaining_quantity > 0`,
-        [materialId]
+        [materialId],
       );
 
       // ยอดที่ถูกจองโดยแผนที่อยู่ในสถานะ RESERVED
@@ -1110,7 +1255,7 @@ export class ProductionPlansService {
          FROM material_reservations mr
          JOIN production_plans pp ON mr.plan_id = pp.id
          WHERE mr.material_id = $1 AND pp.status = 'reserved'`,
-        [materialId]
+        [materialId],
       );
 
       // ยอดที่ถูกจองโดยแผนทั้งหมด (รวม CONFIRMED)
@@ -1120,18 +1265,22 @@ export class ProductionPlansService {
            COUNT(DISTINCT mr.plan_id) as plan_count
          FROM material_reservations mr
          WHERE mr.material_id = $1`,
-        [materialId]
+        [materialId],
       );
 
       // ข้อมูลจาก materials_stock
       const stockData = await this.dataSource.query(
         `SELECT * FROM materials_stock WHERE material_id = $1`,
-        [materialId]
+        [materialId],
       );
 
       const totalInLots = Number(lotsData[0]?.total_remaining || 0);
-      const reservedByReservedPlans = Number(reservedData[0]?.total_reserved || 0);
-      const reservedByAllPlans = Number(allReservedData[0]?.total_reserved || 0);
+      const reservedByReservedPlans = Number(
+        reservedData[0]?.total_reserved || 0,
+      );
+      const reservedByAllPlans = Number(
+        allReservedData[0]?.total_reserved || 0,
+      );
       const available = totalInLots - reservedByReservedPlans;
 
       return {
@@ -1141,19 +1290,19 @@ export class ProductionPlansService {
           reservedByReservedPlans,
           reservedByAllPlans,
           available,
-          formula: `${totalInLots} (in lots) - ${reservedByReservedPlans} (reserved by RESERVED plans) = ${available}`
+          formula: `${totalInLots} (in lots) - ${reservedByReservedPlans} (reserved by RESERVED plans) = ${available}`,
         },
         lotsInfo: {
           count: lotsData[0]?.lot_count || 0,
-          totalRemaining: totalInLots
+          totalRemaining: totalInLots,
         },
         reservationsInfo: {
           reservedPlansCount: reservedData[0]?.plan_count || 0,
           allPlansCount: allReservedData[0]?.plan_count || 0,
           reservedByReservedPlans,
-          reservedByAllPlans
+          reservedByAllPlans,
         },
-        stockTable: stockData[0] || null
+        stockTable: stockData[0] || null,
       };
     } catch (error) {
       console.error('Check material availability error:', error);
@@ -1181,11 +1330,11 @@ export class ProductionPlansService {
            ml.remaining_quantity,
            ml.status
          FROM material_receiving_lots ml
-         JOIN materials m ON ml.material_id = m.id
+         JOIN master.materials m ON ml.material_id = m.id
          WHERE ml.remaining_quantity = 0 
            AND ml.received_quantity > 0
            AND ml.status IN ('AVAILABLE', 'PARTIAL_USED')
-         ORDER BY ml.material_id, ml.lot_no`
+         ORDER BY ml.material_id, ml.lot_no`,
       );
 
       console.log(`Found ${brokenLots.length} broken lots to fix`);
@@ -1198,7 +1347,7 @@ export class ProductionPlansService {
           `SELECT COALESCE(SUM(ABS(quantity)), 0) as total_issued
            FROM material_transactions
            WHERE lot_id = $1 AND transaction_type = 'ISSUE'`,
-          [lot.id]
+          [lot.id],
         );
 
         const totalIssued = Number(issued[0]?.total_issued || 0);
@@ -1215,17 +1364,19 @@ export class ProductionPlansService {
                    ELSE 'USED_UP'
                  END
              WHERE id = $2`,
-            [shouldRemaining, lot.id]
+            [shouldRemaining, lot.id],
           );
 
-          console.log(`Fixed lot ${lot.lot_no} (${lot.mat_code}): set remaining to ${shouldRemaining}`);
+          console.log(
+            `Fixed lot ${lot.lot_no} (${lot.mat_code}): set remaining to ${shouldRemaining}`,
+          );
           fixedCount++;
         }
       }
 
       // อัพเดท materials_stock ให้ตรงกับ lots
       const allMaterials = await queryRunner.manager.query(
-        `SELECT DISTINCT material_id FROM material_receiving_lots`
+        `SELECT DISTINCT material_id FROM material_receiving_lots`,
       );
 
       for (const mat of allMaterials) {
@@ -1236,7 +1387,7 @@ export class ProductionPlansService {
              COALESCE(SUM(remaining_quantity), 0) as total_remaining
            FROM material_receiving_lots 
            WHERE material_id = $1 AND status IN ('AVAILABLE', 'PARTIAL_USED')`,
-          [materialId]
+          [materialId],
         );
 
         const reservedSummary = await queryRunner.manager.query(
@@ -1244,7 +1395,7 @@ export class ProductionPlansService {
            FROM material_reservations mr
            JOIN production_plans pp ON mr.plan_id = pp.id
            WHERE mr.material_id = $1 AND pp.status = 'reserved'`,
-          [materialId]
+          [materialId],
         );
 
         const totalRemaining = Number(lotSummary[0].total_remaining);
@@ -1259,7 +1410,7 @@ export class ProductionPlansService {
              total_qty = $2,
              available_qty = $3,
              reserved_qty = $4`,
-          [materialId, totalRemaining, availableQty, totalReserved]
+          [materialId, totalRemaining, availableQty, totalReserved],
         );
       }
 
@@ -1271,7 +1422,7 @@ export class ProductionPlansService {
         success: true,
         message: 'แก้ไข lots และซิงค์ stock สำเร็จ',
         lotsFixed: fixedCount,
-        materialsUpdated: allMaterials.length
+        materialsUpdated: allMaterials.length,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -1285,34 +1436,36 @@ export class ProductionPlansService {
   async getPlanDetails(planId: number) {
     const plan = await this.planRepo.findOne({
       where: { id: planId },
-      relations: ['items', 'items.product']
+      relations: ['items', 'items.product'],
     });
 
     if (!plan) throw new NotFoundException('ไม่พบแผนการผลิต');
 
+    const itemsOrdered = [...(plan.items ?? [])].sort((a, b) => a.id - b.id);
+
     const details: any[] = [];
 
-    for (const item of plan.items) {
+    for (const item of itemsOrdered) {
       const boms = await this.bomRepo.find({
         where: { productId: item.productId, isActive: true },
         relations: ['material'],
-        order: { sequenceOrder: 'ASC' }
+        order: { sequenceOrder: 'ASC' },
       });
 
       const materials: any[] = [];
       for (const bom of boms) {
         const requiredQty = Number(bom.quantityPerUnit) * Number(item.quantity);
-        
+
         // ดึงจำนวนจริงจาก material_receiving_lots (ไม่รวมที่ถูกจองโดยแผนอื่น)
         const lotTotal = await this.dataSource.query(
           `SELECT COALESCE(SUM(remaining_quantity), 0) as available
            FROM material_receiving_lots 
            WHERE material_id = $1 AND status IN ('AVAILABLE', 'PARTIAL_USED') AND remaining_quantity > 0`,
-          [bom.materialId]
+          [bom.materialId],
         );
 
         const stock = await this.stockRepo.findOne({
-          where: { materialId: bom.materialId }
+          where: { materialId: bom.materialId },
         });
 
         materials.push({
@@ -1324,17 +1477,20 @@ export class ProductionPlansService {
           unit: bom.unit,
           availableQty: Number(lotTotal[0]?.available || 0), // จำนวนที่ใช้ได้จริง (ไม่รวมที่ถูกจอง)
           reservedQty: stock?.reservedQty || 0,
-          totalQty: stock?.totalQty || 0
+          totalQty: stock?.totalQty || 0,
         });
       }
 
       details.push({
+        /** เท่ากับ production_plan_items.id — ใช้กับ production_orders.plan_item_id และ summary.planItemId */
+        id: item.id,
+        planItemId: item.id,
         productId: item.product.id,
         productCode: item.product.productCode,
         productName: item.product.productName,
         quantity: Number(item.quantity),
         unit: item.unit,
-        materials
+        materials,
       });
     }
 
@@ -1350,14 +1506,15 @@ export class ProductionPlansService {
         mr.receive_date,
         mr.create_date
       FROM material_reservations mr
-      JOIN materials m ON mr.material_id = m.id
+      JOIN master.materials m ON mr.material_id = m.id
       LEFT JOIN material_receiving_lots ml ON mr.lot_number = ml.lot_no
       WHERE mr.plan_id = $1
       ORDER BY m.mat_code, mr.receive_date`,
-      [planId]
+      [planId],
     );
 
     return {
+      id: plan.id,
       planId: plan.id,
       planCode: plan.planCode,
       planName: plan.planName,
@@ -1365,7 +1522,7 @@ export class ProductionPlansService {
       status: plan.status,
       remarks: plan.remarks,
       items: details,
-      reservations: reservations.map(r => ({
+      reservations: reservations.map((r) => ({
         materialId: r.material_id,
         materialCode: r.material_code,
         materialName: r.material_name,
@@ -1374,8 +1531,79 @@ export class ProductionPlansService {
         lotPdNo: r.lot_pd_no,
         qrCode: r.qr_code,
         receiveDate: r.receive_date,
-        createDate: r.create_date
-      }))
+        createDate: r.create_date,
+      })),
+    };
+  }
+
+  /**
+   * หลังจ่ายวัตถุดิบและยืนยันแผนแล้ว — สร้าง QR ล็อตผลิตใน DB (เหมือน flow รับเข้า material)
+   * คืนแผนพร้อม productionQrGeneration สำหรับให้หน้าบ้านซิงก์ tracking
+   */
+  private async finalizePlanAfterIssueWithProductionQr(
+    planId: number,
+    username: string,
+  ) {
+    const planOut = await this.findOne(planId);
+    try {
+      const productionQrGeneration = await this.generateProductQrOrdersFromPlan(
+        planId,
+        {},
+        username,
+      );
+      return Object.assign(planOut, {
+        productionQrGeneration,
+        productionQrGenerationError: null as string | null,
+      });
+    } catch (e: unknown) {
+      const productionQrGenerationError =
+        e instanceof Error ? e.message : String(e);
+      console.error(
+        `[finalizePlanAfterIssueWithProductionQr] plan ${planId}:`,
+        e,
+      );
+      return Object.assign(planOut, {
+        productionQrGeneration: null,
+        productionQrGenerationError,
+      });
+    }
+  }
+
+  /**
+   * คืน JSON ชัดเจน — รับประกัน orders[].lots[] พร้อม qrCode หลังบันทึก production_lots
+   * planItemId สอดคล้อง summary.planItemId และ GET .../details items[].id / planItemId
+   */
+  private serializeProductionOrderForPlanQrResponse(
+    order: ProductionOrder,
+    planItemId: number,
+  ) {
+    const lots = [...(order.lots ?? [])].sort(
+      (a, b) => Number(a.sequenceNo) - Number(b.sequenceNo),
+    );
+    return {
+      id: order.id,
+      orderNo: order.orderNo,
+      planId: order.planId ?? null,
+      planItemId,
+      productId: order.productId,
+      orderQuantity: Number(order.orderQuantity),
+      lotSize: Number(order.lotSize),
+      totalLots: order.totalLots,
+      status: order.status,
+      remarks: order.remarks ?? null,
+      createDate: order.createDate,
+      lots: lots.map((lot) => ({
+        id: lot.id,
+        orderId: lot.orderId,
+        lotNo: lot.lotNo,
+        lotPdNo: lot.lotPdNo ?? null,
+        orderLotLabel: lot.orderLotLabel ?? null,
+        qrCode: lot.qrCode,
+        sequenceNo: lot.sequenceNo,
+        quantity: Number(lot.quantity),
+        status: lot.status,
+        currentProcessId: lot.currentProcessId ?? null,
+      })),
     };
   }
 
@@ -1410,7 +1638,7 @@ export class ProductionPlansService {
       `SELECT issuing_no FROM material_issuing 
        WHERE issuing_no LIKE $1 
        ORDER BY issuing_no DESC LIMIT 1`,
-      [`${prefix}%`]
+      [`${prefix}%`],
     );
 
     let sequence = 1;
@@ -1427,12 +1655,12 @@ export class ProductionPlansService {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const prefix = `ISS-${year}${month}`;
-    
+
     const lastIssue = await queryRunner.manager.query(
       `SELECT issue_no FROM material_issues 
        WHERE issue_no LIKE $1 
        ORDER BY issue_no DESC LIMIT 1`,
-      [`${prefix}%`]
+      [`${prefix}%`],
     );
 
     let sequence = 1;

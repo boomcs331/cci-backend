@@ -39,7 +39,7 @@ export class ResponseHelper {
     page: number,
     limit: number,
     total: number,
-    message: string = 'Success'
+    message: string = 'Success',
   ): PaginatedResponse<T[]> {
     return {
       success: true,

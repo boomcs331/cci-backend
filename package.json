@@ -18,6 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "db:migrate": "ts-node scripts/run-sql-migrations.ts",
+    "db:export-schema": "powershell -ExecutionPolicy Bypass -File ./scripts/export-schema-only.ps1",
     "db:health": "ts-node scripts/db-health-check.ts",
     "db:test": "ts-node scripts/test-db-connection.ts",
     "seed:auth": "ts-node scripts/seed-auth-data.ts",

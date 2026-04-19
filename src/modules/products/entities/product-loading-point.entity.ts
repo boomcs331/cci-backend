@@ -1,7 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Product } from './product.entity';
 
-@Entity('product_loading_points')
+@Entity({ schema: 'master', name: 'product_loading_points' })
 export class ProductLoadingPoint {
   @PrimaryGeneratedColumn()
   id: number;
@@ -30,6 +37,6 @@ export class ProductLoadingPoint {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
-  @OneToMany(() => Product, product => product.loadingPoint)
+  @OneToMany(() => Product, (product) => product.loadingPoint)
   products: Product[];
 }

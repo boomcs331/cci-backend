@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+} from 'typeorm';
 import { Material } from '../../entities/material.entity';
 import { IssuingType } from '../../entities/issuing-type.entity';
 import { MaterialIssuingLot } from './material-issuing-lot.entity';
@@ -66,7 +75,13 @@ export class MaterialIssuing {
   @Column({ name: 'production_order_id', nullable: true })
   productionOrderId: number;
 
-  @Column({ name: 'required_quantity', type: 'decimal', precision: 15, scale: 4, nullable: true })
+  @Column({
+    name: 'required_quantity',
+    type: 'decimal',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
   requiredQuantity: number;
 
   @ManyToOne(() => Material)
@@ -77,9 +92,9 @@ export class MaterialIssuing {
   @JoinColumn({ name: 'issuing_type_id' })
   issuingTypeMaster: IssuingType;
 
-  @OneToMany(() => MaterialIssuingLot, lot => lot.issuing)
+  @OneToMany(() => MaterialIssuingLot, (lot) => lot.issuing)
   lots: MaterialIssuingLot[];
 
-  @OneToMany(() => MaterialIssuingDocument, doc => doc.issuing)
+  @OneToMany(() => MaterialIssuingDocument, (doc) => doc.issuing)
   documents: MaterialIssuingDocument[];
 }

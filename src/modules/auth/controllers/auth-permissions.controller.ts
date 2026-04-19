@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+  UseInterceptors,
+} from '@nestjs/common';
 import { AuthService } from '../auth.service';
 import { CreatePermissionDto } from '../dto/create-permission.dto';
 import { UpdatePermissionDto } from '../dto/update-permission.dto';
@@ -12,8 +23,13 @@ export class AuthPermissionsController {
 
   @Post('permissions')
   async createPermission(@Body() createPermissionDto: CreatePermissionDto) {
-    const permission = await this.authService.createPermission(createPermissionDto);
-    return withMessage('Permission created successfully', 'permission', permission);
+    const permission =
+      await this.authService.createPermission(createPermissionDto);
+    return withMessage(
+      'Permission created successfully',
+      'permission',
+      permission,
+    );
   }
 
   @Get('permissions')
@@ -28,9 +44,19 @@ export class AuthPermissionsController {
   }
 
   @Put('permissions/:id')
-  async updatePermission(@Param('id') id: string, @Body() updatePermissionDto: UpdatePermissionDto) {
-    const permission = await this.authService.updatePermission(id, updatePermissionDto);
-    return withMessage('Permission updated successfully', 'permission', permission);
+  async updatePermission(
+    @Param('id') id: string,
+    @Body() updatePermissionDto: UpdatePermissionDto,
+  ) {
+    const permission = await this.authService.updatePermission(
+      id,
+      updatePermissionDto,
+    );
+    return withMessage(
+      'Permission updated successfully',
+      'permission',
+      permission,
+    );
   }
 
   @Delete('permissions/:id')

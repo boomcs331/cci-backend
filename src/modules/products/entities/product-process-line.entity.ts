@@ -1,7 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Product } from './product.entity';
 
-@Entity('product_process_lines')
+@Entity({ schema: 'master', name: 'product_process_lines' })
 export class ProductProcessLine {
   @PrimaryGeneratedColumn()
   id: number;
@@ -30,6 +37,6 @@ export class ProductProcessLine {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
-  @OneToMany(() => Product, product => product.processLine)
+  @OneToMany(() => Product, (product) => product.processLine)
   products: Product[];
 }

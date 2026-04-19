@@ -29,29 +29,32 @@ export class LogsController {
   @Get('api/slow')
   async getSlowRequests(
     @Query('threshold') threshold?: string,
-    @Query('limit') limit?: string
+    @Query('limit') limit?: string,
   ) {
     const thresholdNum = threshold ? parseInt(threshold, 10) : 1000;
     const limitNum = limit ? parseInt(limit, 10) : 20;
-    const logs = await this.apiAuditService.getSlowRequests(thresholdNum, limitNum);
-    return { 
-      logs, 
-      count: logs.length, 
-      thresholdMs: thresholdNum 
+    const logs = await this.apiAuditService.getSlowRequests(
+      thresholdNum,
+      limitNum,
+    );
+    return {
+      logs,
+      count: logs.length,
+      thresholdMs: thresholdNum,
     };
   }
 
   @Get('api/by-ip/:ip')
   async getRequestsByIP(
     @Param('ip') ip: string,
-    @Query('limit') limit?: string
+    @Query('limit') limit?: string,
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
     const logs = await this.apiAuditService.getRequestsByIP(ip, limitNum);
-    return { 
-      logs, 
-      count: logs.length, 
-      ip 
+    return {
+      logs,
+      count: logs.length,
+      ip,
     };
   }
 
@@ -59,15 +62,19 @@ export class LogsController {
   async getRequestsByEndpoint(
     @Query('method') method: string,
     @Query('url') url: string,
-    @Query('limit') limit?: string
+    @Query('limit') limit?: string,
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
-    const logs = await this.apiAuditService.getRequestsByEndpoint(method, url, limitNum);
-    return { 
-      logs, 
-      count: logs.length, 
-      method, 
-      url 
+    const logs = await this.apiAuditService.getRequestsByEndpoint(
+      method,
+      url,
+      limitNum,
+    );
+    return {
+      logs,
+      count: logs.length,
+      method,
+      url,
     };
   }
 
@@ -96,10 +103,10 @@ export class LogsController {
   async cleanupOldLogs(@Query('days') days?: string) {
     const daysToKeep = days ? parseInt(days, 10) : 90;
     const deletedCount = await this.apiAuditService.cleanOldLogs(daysToKeep);
-    return { 
+    return {
       message: `Cleaned up old logs`,
       deletedCount,
-      daysToKeep 
+      daysToKeep,
     };
   }
 }

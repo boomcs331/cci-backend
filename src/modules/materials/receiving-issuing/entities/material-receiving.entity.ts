@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+} from 'typeorm';
 import { Material } from '../../entities/material.entity';
 import { Supplier } from '../../entities/supplier.entity';
 import { MaterialReceivingLot } from './material-receiving-lot.entity';
@@ -55,6 +64,6 @@ export class MaterialReceiving {
   @JoinColumn({ name: 'supplier_id' })
   supplier: Supplier;
 
-  @OneToMany(() => MaterialReceivingLot, lot => lot.receiving)
+  @OneToMany(() => MaterialReceivingLot, (lot) => lot.receiving)
   lots: MaterialReceivingLot[];
 }

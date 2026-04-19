@@ -1,9 +1,34 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { buildInventoryStyleQrCode } from '@app/common';
+import { ProductProductionStep } from '../products/entities/product-production-step.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
-import { ProductionOrder, ProductionLot, ProductionProcess, ProductionLotTracking } from './entities';
+import { Repository, DataSource, EntityManager } from 'typeorm';
+import {
+  ProductionOrder,
+  ProductionLot,
+  ProductionProcess,
+  ProductionLotTracking,
+} from './entities';
 import { Product } from '../products/entities/product.entity';
-import { CreateProductionOrderDto, StartProcessDto, CompleteProcessDto, CreateProcessDto } from './dto';
+import { ProductStockService } from '../products/product-stock.service';
+import {
+  QrScanAction,
+  QrScanDomain,
+} from '../../core/audit/entities/qr-scan-log.entity';
+import { QrScanLogService } from '../../core/audit/services/qr-scan-log.service';
+import {
+  CreateProductionOrderDto,
+  StartProcessDto,
+  CompleteProcessDto,
+  CreateProcessDto,
+} from './dto';
+import { AuthUserService } from '../auth/services/auth-user.service';
+import { User } from '../auth/entities/user.entity';
 
 @Injectable()
 export class ProductionOrdersService {
@@ -19,11 +44,214 @@ export class ProductionOrdersService {
     @InjectRepository(Product)
     private productRepo: Repository<Product>,
     private dataSource: DataSource,
+    private readonly productStockService: ProductStockService,
+    private readonly authUserService: AuthUserService,
+    private readonly qrScanLogService: QrScanLogService,
   ) {}
 
+  private userIsAdminGlobal(user: User | null | undefined): boolean {
+    if (!user) return false;
+    const fromDirect = user.roles?.some((r) => r.code === 'ADMIN_GLOBAL');
+    if (fromDirect) return true;
+    return (
+      user.roleAssignments?.some((a) => a.role?.code === 'ADMIN_GLOBAL') ??
+      false
+    );
+  }
+
+  private canUserActOnProcess(
+    process: ProductionProcess,
+    user: User | null,
+    isGlobal: boolean,
+  ): boolean {
+    if (isGlobal) return true;
+    const allowed = process.allowedDepartmentCodes;
+    if (!allowed?.length) return true;
+    const code = user?.department?.code;
+    if (!code) return false;
+    return allowed.includes(code);
+  }
+
+  private async resolveOrderedProcesses(
+    manager: EntityManager,
+    productId: number,
+  ): Promise<ProductionProcess[]> {
+    const route = await manager.find(ProductProductionStep, {
+      where: { productId },
+      relations: ['process'],
+      order: { stepOrder: 'ASC' },
+    });
+    if (route.length > 0) {
+      return route.map((r) => r.process);
+    }
+    return manager.find(ProductionProcess, {
+      where: { isActive: true },
+      order: { sequenceOrder: 'ASC' },
+    });
+  }
+
+  private processStationFields(p: ProductionProcess) {
+    return {
+      processId: p.id,
+      processCode: p.processCode,
+      processName: p.processName,
+      allowedDepartmentCodes: p.allowedDepartmentCodes ?? null,
+    };
+  }
+
+  /** Shared: step position, department gates, Thai summary / alerts for QR status & station */
+  private async buildLotQrStationView(lot: ProductionLot, userId?: string) {
+    const user = userId
+      ? await this.authUserService.findUserById(userId)
+      : null;
+    const isGlobal = this.userIsAdminGlobal(user);
+    const userDept = user?.department?.code ?? null;
+
+    const orderedProcesses = await this.resolveOrderedProcesses(
+      this.dataSource.manager,
+      lot.order.productId,
+    );
+
+    const route = orderedProcesses.map((p) => this.processStationFields(p));
+
+    const inProgressRow = lot.tracking?.find((t) => t.status === 'IN_PROGRESS');
+    const inProgress = inProgressRow?.process
+      ? {
+          ...this.processStationFields(inProgressRow.process),
+          startTime: inProgressRow.startTime,
+        }
+      : null;
+
+    type StationProc = ReturnType<
+      ProductionOrdersService['processStationFields']
+    >;
+    let expectedProcess: StationProc | null = null;
+    if (lot.status !== 'COMPLETED' && !inProgress) {
+      const expectedId =
+        lot.currentProcessId ?? orderedProcesses[0]?.id ?? null;
+      const proc = expectedId
+        ? orderedProcesses.find((x) => x.id === expectedId)
+        : null;
+      expectedProcess = proc ? this.processStationFields(proc) : null;
+    }
+
+    const expectedProcEntity = expectedProcess
+      ? orderedProcesses.find((x) => x.id === expectedProcess.processId)
+      : null;
+    const inProgEntity = inProgressRow?.process ?? null;
+
+    const canStart = Boolean(
+      expectedProcEntity &&
+        !inProgress &&
+        lot.status !== 'COMPLETED' &&
+        this.canUserActOnProcess(expectedProcEntity, user, isGlobal),
+    );
+
+    const canComplete = Boolean(
+      inProgEntity &&
+        this.canUserActOnProcess(inProgEntity, user, isGlobal),
+    );
+
+    let denyReason: string | null = null;
+    let departmentAlertTh: string | null = null;
+
+    if (lot.status !== 'COMPLETED' && !inProgress && expectedProcEntity) {
+      if (!canStart && !isGlobal) {
+        const need = expectedProcEntity.allowedDepartmentCodes?.length
+          ? expectedProcEntity.allowedDepartmentCodes.join(', ')
+          : null;
+        if (need) {
+          denyReason = `Step ${expectedProcEntity.processCode} requires department: ${need}. Yours: ${userDept ?? 'none'}`;
+          departmentAlertTh =
+            '\u0e41\u0e08\u0e49\u0e07\u0e40\u0e15\u0e37\u0e2d\u0e19: \u0e02\u0e31\u0e49\u0e19\u0e15\u0e2d\u0e19 "' +
+            expectedProcEntity.processCode +
+            '" (' +
+            expectedProcEntity.processName +
+            ') \u0e01\u0e33\u0e2b\u0e19\u0e14\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e41\u0e1c\u0e19\u0e01 ' +
+            need +
+            ' \u0e41\u0e1c\u0e19\u0e01\u0e02\u0e2d\u0e07\u0e04\u0e38\u0e13\u0e04\u0e37\u0e2d "' +
+            (userDept ?? '\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e23\u0e30\u0e1a\u0e38') +
+            '" \u2014 \u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e40\u0e23\u0e34\u0e48\u0e21\u0e07\u0e32\u0e19\u0e17\u0e35\u0e48\u0e2a\u0e16\u0e32\u0e19\u0e35\u0e19\u0e35\u0e49\u0e44\u0e14\u0e49';
+        }
+      }
+    } else if (inProgEntity && !canComplete && !isGlobal) {
+      const need = inProgEntity.allowedDepartmentCodes?.length
+        ? inProgEntity.allowedDepartmentCodes.join(', ')
+        : null;
+      if (need) {
+        denyReason = `Complete allowed for departments: ${need}. Yours: ${userDept ?? 'none'}`;
+        departmentAlertTh =
+          '\u0e41\u0e08\u0e49\u0e07\u0e40\u0e15\u0e37\u0e2d\u0e19: \u0e01\u0e32\u0e23\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19\u0e02\u0e31\u0e49\u0e19\u0e15\u0e2d\u0e19 "' +
+          inProgEntity.processCode +
+          '" (' +
+          inProgEntity.processName +
+          ') \u0e01\u0e33\u0e2b\u0e19\u0e14\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e41\u0e1c\u0e19\u0e01 ' +
+          need +
+          ' \u0e41\u0e1c\u0e19\u0e01\u0e02\u0e2d\u0e07\u0e04\u0e38\u0e13\u0e04\u0e37\u0e2d "' +
+          (userDept ?? '\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e23\u0e30\u0e1a\u0e38') +
+          '" \u2014 \u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19\u0e17\u0e35\u0e48\u0e2a\u0e16\u0e32\u0e19\u0e35\u0e19\u0e35\u0e49\u0e44\u0e14\u0e49';
+      }
+    }
+
+
+    let currentStepPhase: 'IN_PROGRESS' | 'WAITING_START' | 'COMPLETED';
+    if (lot.status === 'COMPLETED') {
+      currentStepPhase = 'COMPLETED';
+    } else if (inProgress) {
+      currentStepPhase = 'IN_PROGRESS';
+    } else {
+      currentStepPhase = 'WAITING_START';
+    }
+
+    let stepSummaryTh: string;
+    if (lot.status === 'COMPLETED') {
+      stepSummaryTh =
+        '\u0e1c\u0e25\u0e34\u0e15\u0e04\u0e23\u0e1a\u0e41\u0e25\u0e49\u0e27 \u2014 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e31\u0e49\u0e19\u0e15\u0e2d\u0e19\u0e16\u0e31\u0e14\u0e44\u0e1b';
+    } else if (orderedProcesses.length === 0) {
+      stepSummaryTh =
+        '\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35\u0e40\u0e2a\u0e49\u0e19\u0e17\u0e32\u0e07\u0e01\u0e23\u0e30\u0e1a\u0e27\u0e19\u0e01\u0e32\u0e23\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e19\u0e35\u0e49 \u2014 \u0e01\u0e33\u0e2b\u0e19\u0e14\u0e25\u0e33\u0e14\u0e31\u0e1a\u0e02\u0e31\u0e49\u0e19\u0e1a\u0e19\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e01\u0e48\u0e2d\u0e19';
+    } else if (inProgress) {
+      stepSummaryTh = `\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e33\u0e40\u0e19\u0e34\u0e19\u0e01\u0e32\u0e23\u0e02\u0e31\u0e49\u0e19\u0e15\u0e2d\u0e19 ${inProgress.processCode} \u2014 ${inProgress.processName}`;
+    } else if (expectedProcess) {
+      stepSummaryTh = `\u0e23\u0e2d\u0e40\u0e23\u0e34\u0e48\u0e21\u0e02\u0e31\u0e49\u0e19\u0e15\u0e2d\u0e19 ${expectedProcess.processCode} \u2014 ${expectedProcess.processName}`;
+    } else {
+      stepSummaryTh =
+        '\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e23\u0e30\u0e1a\u0e38\u0e02\u0e31\u0e49\u0e19\u0e15\u0e2d\u0e19\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19\u0e44\u0e14\u0e49';
+    }
+
+    return {
+      lotNo: lot.lotNo,
+      qrCode: lot.qrCode,
+      quantity: lot.quantity,
+      status: lot.status,
+      orderNo: lot.order.orderNo,
+      productCode: lot.order.product.productCode,
+      productName: lot.order.product.productName,
+      userDepartmentCode: userDept,
+      isAdminGlobal: isGlobal,
+      route,
+      inProgress,
+      expectedProcess,
+      currentStepPhase,
+      stepSummaryTh,
+      departmentAlertTh,
+      nextAction: inProgress
+        ? ('complete' as const)
+        : lot.status === 'COMPLETED'
+          ? ('none' as const)
+          : ('start' as const),
+      canStart,
+      canComplete,
+      completeProcessId: inProgress?.processId ?? null,
+      denyReason: departmentAlertTh ?? denyReason,
+    };
+  }
+
   async createProductionOrder(dto: CreateProductionOrderDto, user: string) {
-    return await this.dataSource.transaction(async manager => {
-      const product = await manager.findOne(Product, { where: { id: dto.productId } });
+    return await this.dataSource.transaction(async (manager) => {
+      const product = await manager.findOne(Product, {
+        where: { id: dto.productId },
+      });
       if (!product) throw new NotFoundException('Product not found');
 
       const orderQty = Number(dto.orderQuantity);
@@ -42,6 +270,7 @@ export class ProductionOrdersService {
         orderNo,
         productId: dto.productId,
         orderQuantity: orderQty,
+        quantity: orderQty,
         lotSize,
         totalLots,
         status: 'DRAFT',
@@ -52,32 +281,76 @@ export class ProductionOrdersService {
       });
       const savedOrder = await manager.save(order);
 
-      const today = new Date();
-      const dateStr = today.getFullYear() + 
-                      String(today.getMonth() + 1).padStart(2, '0') + 
-                      String(today.getDate()).padStart(2, '0');
+      // เลขล็อตแบบเดียวกับ material: PG = ล็อตผลิตรายวัน (เทียบ PC), PD = คู่วันเดียวกัน (เทียบ lot_pd_no)
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const dateStr = `${y}${m}${d}`;
+      const startOfDay = new Date(y, now.getMonth(), now.getDate());
+      const endOfDay = new Date(y, now.getMonth(), now.getDate() + 1);
+
+      const existingPgCount = await manager
+        .createQueryBuilder(ProductionLot, 'lot')
+        .where('lot.lotNo LIKE :prefix', { prefix: `PG${dateStr}-%` })
+        .andWhere('lot.createDate >= :startOfDay', { startOfDay })
+        .andWhere('lot.createDate < :endOfDay', { endOfDay })
+        .getCount();
+
+      const existingPdCount = await manager
+        .createQueryBuilder(ProductionLot, 'lot')
+        .where('lot.lotPdNo IS NOT NULL')
+        .andWhere('lot.lotPdNo LIKE :prefix', { prefix: `PD${dateStr}-%` })
+        .andWhere('lot.createDate >= :startOfDay', { startOfDay })
+        .andWhere('lot.createDate < :endOfDay', { endOfDay })
+        .getCount();
+
+      // ตั้งค่า "ขั้นตอนแรก" ให้ล็อตใหม่ทันทีหลังสร้าง QR
+      // เพื่อให้หน้า tracking แสดงว่าล็อตรอเริ่มที่สถานีแรกทันที
+      const orderedProcesses = await this.resolveOrderedProcesses(
+        manager,
+        dto.productId,
+      );
+      const firstProcessId = orderedProcesses[0]?.id;
 
       for (let i = 0; i < totalLots; i++) {
         const seqNo = i + 1;
-        const lotNo = `${orderNo}-LOT${String(seqNo).padStart(3, '0')}`;
-        const qrCode = `QR-${lotNo}-${Date.now() + i}`;
+        const pgRun = String(existingPgCount + i + 1).padStart(3, '0');
+        const pdRun = String(existingPdCount + i + 1).padStart(3, '0');
+        const lotNo = `PG${dateStr}-${pgRun}`;
+        const lotPdNo = `PD${dateStr}-${pdRun}`;
+        const orderLotLabel = `${orderNo}-LOT${String(seqNo).padStart(3, '0')}`;
+        const qrCode = buildInventoryStyleQrCode(lotNo);
         const quantity =
-          i === totalLots - 1
-            ? orderQty - lotSize * (totalLots - 1)
-            : lotSize;
+          i === totalLots - 1 ? orderQty - lotSize * (totalLots - 1) : lotSize;
 
         const lot = manager.create(ProductionLot, {
           orderId: savedOrder.id,
           lotNo,
+          lotPdNo,
+          orderLotLabel,
           qrCode,
           sequenceNo: seqNo,
           quantity,
           status: 'PENDING',
+          currentProcessId: firstProcessId,
         });
         await manager.save(lot);
       }
 
-      return this.findOrderWithLots(savedOrder.id);
+      // ต้องโหลดด้วย transaction manager — ห้ามใช้ this.orderRepo ใน callback เพราะจะไม่เห็นแถวที่ยังไม่ commit แล้ว NotFound → rollback ทั้ง order
+      const full = await manager.findOne(ProductionOrder, {
+        where: { id: savedOrder.id },
+        relations: [
+          'product',
+          'lots',
+          'lots.currentProcess',
+          'plan',
+          'planItem',
+        ],
+      });
+      if (!full) throw new NotFoundException('Order not found');
+      return full;
     });
   }
 
@@ -101,6 +374,15 @@ export class ProductionOrdersService {
     return order;
   }
 
+  /** ใช้ซ้ำสร้าง QR จากแผน: ถ้ามี order ของ plan + บรรทัดแผนแล้ว ไม่สร้างซ้ำ */
+  async findOrderByPlanAndPlanItem(
+    planId: number,
+    planItemId: number,
+  ): Promise<ProductionOrder | null> {
+    if (!planId || !planItemId) return null;
+    return this.orderRepo.findOne({ where: { planId, planItemId } });
+  }
+
   async startOrder(id: number) {
     const order = await this.orderRepo.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
@@ -112,20 +394,86 @@ export class ProductionOrdersService {
     return this.orderRepo.save(order);
   }
 
-  async startLotProcess(qrCode: string, dto: StartProcessDto) {
-    return await this.dataSource.transaction(async manager => {
-      const lot = await manager.findOne(ProductionLot, { where: { qrCode } });
+  async startLotProcess(
+    qrCode: string,
+    dto: StartProcessDto,
+    userId?: string,
+  ) {
+    const user = userId
+      ? await this.authUserService.findUserById(userId)
+      : null;
+    const isGlobal = this.userIsAdminGlobal(user);
+
+    return await this.dataSource.transaction(async (manager) => {
+      const lot = await manager.findOne(ProductionLot, {
+        where: { qrCode },
+        relations: ['order'],
+      });
       if (!lot) throw new NotFoundException('QR Code not found');
 
-      const process = await manager.findOne(ProductionProcess, { where: { id: dto.processId } });
+      if (lot.status === 'COMPLETED') {
+        throw new BadRequestException('Lot production is already completed');
+      }
+
+      const openTracking = await manager.findOne(ProductionLotTracking, {
+        where: { lotId: lot.id, status: 'IN_PROGRESS' },
+      });
+      if (openTracking) {
+        throw new BadRequestException(
+          'A step is already in progress; complete it before starting another',
+        );
+      }
+
+      const process = await manager.findOne(ProductionProcess, {
+        where: { id: dto.processId },
+      });
       if (!process) throw new NotFoundException('Process not found');
+
+      const orderedProcesses = await this.resolveOrderedProcesses(
+        manager,
+        lot.order.productId,
+      );
+      if (orderedProcesses.length === 0) {
+        throw new BadRequestException(
+          'No production route is configured for this product',
+        );
+      }
+
+      const allowedIds = orderedProcesses.map((p) => p.id);
+      if (!allowedIds.includes(dto.processId)) {
+        throw new BadRequestException(
+          "ขั้นตอนนี้ไม่อยู่ในเส้นทางผลิตที่กำหนดสำหรับสินค้านี้",
+        );
+      }
+
+      const expectedProcessId =
+        lot.currentProcessId ?? orderedProcesses[0].id;
+      if (dto.processId !== expectedProcessId) {
+        const expected = orderedProcesses.find(
+          (p) => p.id === expectedProcessId,
+        );
+        throw new BadRequestException(
+          `Wrong step: expected ${expected?.processCode ?? expectedProcessId}, got process id ${dto.processId}`,
+        );
+      }
+
+      if (!this.canUserActOnProcess(process, user, isGlobal)) {
+        throw new ForbiddenException(
+          'Your department is not allowed to start this step',
+        );
+      }
+
+      const operator =
+        (dto.operator && dto.operator.trim()) ||
+        user?.username ||
+        'scanner';
 
       const tracking = manager.create(ProductionLotTracking, {
         lotId: lot.id,
         processId: dto.processId,
         startTime: new Date(),
         status: 'IN_PROGRESS',
-        operator: dto.operator,
+        operator,
       });
       await manager.save(tracking);
 
@@ -133,51 +481,218 @@ export class ProductionOrdersService {
       lot.status = 'IN_PROGRESS';
       await manager.save(lot);
 
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.PRODUCTION,
+        action: QrScanAction.PRODUCTION_STEP_START,
+        qrCode,
+        userId: userId ?? null,
+        username: user?.username ?? null,
+        departmentId: user?.department?.id
+          ? String(user.department.id)
+          : null,
+        isSuccess: true,
+        metadata: {
+          processId: dto.processId,
+          operator,
+        },
+      });
+
       return tracking;
+    }).catch(async (err: unknown) => {
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.PRODUCTION,
+        action: QrScanAction.PRODUCTION_STEP_START,
+        qrCode,
+        userId: userId ?? null,
+        username: user?.username ?? null,
+        departmentId: user?.department?.id
+          ? String(user.department.id)
+          : null,
+        isSuccess: false,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        metadata: { processId: dto.processId },
+      });
+      throw err;
     });
   }
 
-  async completeLotProcess(qrCode: string, dto: CompleteProcessDto) {
-    return await this.dataSource.transaction(async manager => {
-      const lot = await manager.findOne(ProductionLot, { where: { qrCode } });
+  async completeLotProcess(
+    qrCode: string,
+    dto: CompleteProcessDto,
+    userId?: string,
+  ) {
+    const user = userId
+      ? await this.authUserService.findUserById(userId)
+      : null;
+    const isGlobal = this.userIsAdminGlobal(user);
+
+    return await this.dataSource.transaction(async (manager) => {
+      const lot = await manager.findOne(ProductionLot, {
+        where: { qrCode },
+        relations: ['order'],
+      });
       if (!lot) throw new NotFoundException('QR Code not found');
 
       const tracking = await manager.findOne(ProductionLotTracking, {
-        where: { lotId: lot.id, processId: dto.processId, status: 'IN_PROGRESS' }
+        where: {
+          lotId: lot.id,
+          processId: dto.processId,
+          status: 'IN_PROGRESS',
+        },
+        relations: ['process'],
       });
       if (!tracking) throw new NotFoundException('Process not started');
+
+      const processRow =
+        tracking.process ??
+        (await manager.findOne(ProductionProcess, {
+          where: { id: dto.processId },
+        }));
+      if (!processRow) throw new NotFoundException('Process not found');
+
+      if (!this.canUserActOnProcess(processRow, user, isGlobal)) {
+        throw new ForbiddenException(
+          'Your department is not allowed to complete this step',
+        );
+      }
 
       tracking.endTime = new Date();
       tracking.status = 'COMPLETED';
       tracking.remarks = dto.remarks;
       await manager.save(tracking);
 
-      const allProcesses = await manager.find(ProductionProcess, {
-        where: { isActive: true },
-        order: { sequenceOrder: 'ASC' }
-      });
-      const currentIndex = allProcesses.findIndex(p => p.id === dto.processId);
-      
-      if (currentIndex === allProcesses.length - 1) {
+      const orderedProcesses = await this.resolveOrderedProcesses(
+        manager,
+        lot.order.productId,
+      );
+
+      const currentIndex = orderedProcesses.findIndex(
+        (p) => p.id === dto.processId,
+      );
+      if (currentIndex === -1) {
+        throw new BadRequestException(
+          "ขั้นตอนนี้ไม่อยู่ในลำดับการผลิตของสินค้านี้",
+        );
+      }
+
+      const prevLotStatus = lot.status;
+
+      if (currentIndex === orderedProcesses.length - 1) {
         lot.status = 'COMPLETED';
         lot.currentProcessId = undefined;
       } else {
-        lot.currentProcessId = allProcesses[currentIndex + 1].id;
+        lot.currentProcessId = orderedProcesses[currentIndex + 1].id;
       }
       await manager.save(lot);
 
+      if (lot.status === 'COMPLETED' && prevLotStatus !== 'COMPLETED') {
+        await this.productStockService.addFinishedGoodsFromLot(
+          manager,
+          lot.order.productId,
+          lot.quantity,
+        );
+      }
+
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.PRODUCTION,
+        action: QrScanAction.PRODUCTION_STEP_COMPLETE,
+        qrCode,
+        userId: userId ?? null,
+        username: user?.username ?? null,
+        departmentId: user?.department?.id
+          ? String(user.department.id)
+          : null,
+        isSuccess: true,
+        metadata: {
+          processId: dto.processId,
+          lotStatus: lot.status,
+        },
+      });
+
       return tracking;
+    }).catch(async (err: unknown) => {
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.PRODUCTION,
+        action: QrScanAction.PRODUCTION_STEP_COMPLETE,
+        qrCode,
+        userId: userId ?? null,
+        username: user?.username ?? null,
+        departmentId: user?.department?.id
+          ? String(user.department.id)
+          : null,
+        isSuccess: false,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        metadata: { processId: dto.processId },
+      });
+      throw err;
     });
   }
 
-  async getLotStatus(qrCode: string) {
+  async getLotStation(qrCode: string, userId?: string) {
     const lot = await this.lotRepo.findOne({
       where: { qrCode },
-      relations: ['order', 'order.product', 'currentProcess', 'tracking', 'tracking.process']
+      relations: [
+        'order',
+        'order.product',
+        'currentProcess',
+        'tracking',
+        'tracking.process',
+      ],
     });
-    if (!lot) throw new NotFoundException('QR Code not found');
+    if (!lot) {
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.PRODUCTION,
+        action: QrScanAction.PRODUCTION_STATION_LOOKUP,
+        qrCode,
+        userId: userId ?? null,
+        isSuccess: false,
+        errorMessage: 'QR Code not found',
+      });
+      throw new NotFoundException('QR Code not found');
+    }
 
-    return {
+    const station = await this.buildLotQrStationView(lot, userId);
+    await this.qrScanLogService.logEvent({
+      domain: QrScanDomain.PRODUCTION,
+      action: QrScanAction.PRODUCTION_STATION_LOOKUP,
+      qrCode,
+      userId: userId ?? null,
+      isSuccess: true,
+      metadata: {
+        lotStatus: lot.status,
+        nextAction: station.nextAction,
+      },
+    });
+
+    return station;
+  }
+
+  async getLotStatus(qrCode: string, userId?: string) {
+    const lot = await this.lotRepo.findOne({
+      where: { qrCode },
+      relations: [
+        'order',
+        'order.product',
+        'currentProcess',
+        'tracking',
+        'tracking.process',
+      ],
+    });
+    if (!lot) {
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.PRODUCTION,
+        action: QrScanAction.PRODUCTION_STATUS_LOOKUP,
+        qrCode,
+        userId: userId ?? null,
+        isSuccess: false,
+        errorMessage: 'QR Code not found',
+      });
+      throw new NotFoundException('QR Code not found');
+    }
+
+    const station = await this.buildLotQrStationView(lot, userId);
+
+    const payload = {
       lotNo: lot.lotNo,
       qrCode: lot.qrCode,
       quantity: lot.quantity,
@@ -185,8 +700,16 @@ export class ProductionOrdersService {
       orderNo: lot.order.orderNo,
       productCode: lot.order.product.productCode,
       productName: lot.order.product.productName,
-      currentProcess: lot.currentProcess?.processName,
-      tracking: lot.tracking.map(t => ({
+      currentProcess: lot.currentProcess?.processName ?? null,
+      currentProcessCode: lot.currentProcess?.processCode ?? null,
+      currentStepPhase: station.currentStepPhase,
+      stepSummaryTh: station.stepSummaryTh,
+      departmentAlertTh: station.departmentAlertTh,
+      userDepartmentCode: station.userDepartmentCode,
+      canOperateCurrentStep: station.canStart || station.canComplete,
+      expectedProcess: station.expectedProcess,
+      inProgressStep: station.inProgress,
+      tracking: lot.tracking.map((t) => ({
         processCode: t.process.processCode,
         processName: t.process.processName,
         startTime: t.startTime,
@@ -194,11 +717,28 @@ export class ProductionOrdersService {
         status: t.status,
         operator: t.operator,
         remarks: t.remarks,
-        duration: t.endTime && t.startTime 
-          ? Math.round((t.endTime.getTime() - t.startTime.getTime()) / 60000) + ' นาที'
-          : null
-      }))
+        duration:
+          t.endTime && t.startTime
+            ? Math.round(
+                (t.endTime.getTime() - t.startTime.getTime()) / 60000,
+              ) + ' \u0e19\u0e32\u0e17\u0e35'
+            : null,
+      })),
     };
+
+    await this.qrScanLogService.logEvent({
+      domain: QrScanDomain.PRODUCTION,
+      action: QrScanAction.PRODUCTION_STATUS_LOOKUP,
+      qrCode,
+      userId: userId ?? null,
+      isSuccess: true,
+      metadata: {
+        lotStatus: lot.status,
+        trackingCount: lot.tracking.length,
+      },
+    });
+
+    return payload;
   }
 
   async createProcess(dto: CreateProcessDto) {
@@ -209,7 +749,7 @@ export class ProductionOrdersService {
   async getAllProcesses() {
     return this.processRepo.find({
       where: { isActive: true },
-      order: { sequenceOrder: 'ASC' }
+      order: { sequenceOrder: 'ASC' },
     });
   }
 

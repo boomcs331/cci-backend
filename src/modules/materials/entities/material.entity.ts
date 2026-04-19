@@ -1,4 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany, OneToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+  OneToOne,
+} from 'typeorm';
 import { MaterialsType } from './materials-type.entity';
 import { MaterialsLocation } from './materials-location.entity';
 import { MaterialsStock } from './materials-stock.entity';
@@ -9,7 +19,7 @@ import { Unit } from './unit.entity';
 import { LoadingPoint } from './loading-point.entity';
 import { ProcessLine } from './process-line.entity';
 
-@Entity('materials')
+@Entity({ schema: 'master', name: 'materials' })
 export class Material {
   @PrimaryGeneratedColumn()
   id: number;
@@ -71,39 +81,38 @@ export class Material {
   @Column({ name: 'process_line_id', nullable: true })
   processLineId: number;
 
-  @ManyToOne(() => MaterialsType, materialsType => materialsType.materials)
+  @ManyToOne(() => MaterialsType, (materialsType) => materialsType.materials)
   @JoinColumn({ name: 'mat_type_id' })
   materialsType: MaterialsType;
 
-  @ManyToOne(() => MaterialsLocation, location => location.materials)
+  @ManyToOne(() => MaterialsLocation, (location) => location.materials)
   @JoinColumn({ name: 'default_location_id' })
   defaultLocation: MaterialsLocation;
 
-  @ManyToOne(() => Supplier, supplier => supplier.materials)
+  @ManyToOne(() => Supplier, (supplier) => supplier.materials)
   @JoinColumn({ name: 'supplier_id' })
   supplier: Supplier;
 
-  @ManyToOne(() => Model, model => model.materials)
+  @ManyToOne(() => Model, (model) => model.materials)
   @JoinColumn({ name: 'model_id' })
   model: Model;
 
-  @ManyToOne(() => DeliveryType, deliveryType => deliveryType.materials)
+  @ManyToOne(() => DeliveryType, (deliveryType) => deliveryType.materials)
   @JoinColumn({ name: 'delivery_type_id' })
   deliveryType: DeliveryType;
 
-  @ManyToOne(() => Unit, unit => unit.materials)
+  @ManyToOne(() => Unit, (unit) => unit.materials)
   @JoinColumn({ name: 'unit_id' })
   unitMaster: Unit;
 
-  @ManyToOne(() => LoadingPoint, loadingPoint => loadingPoint.materials)
+  @ManyToOne(() => LoadingPoint, (loadingPoint) => loadingPoint.materials)
   @JoinColumn({ name: 'loading_point_id' })
   loadingPoint: LoadingPoint;
 
-  @ManyToOne(() => ProcessLine, processLine => processLine.materials)
+  @ManyToOne(() => ProcessLine, (processLine) => processLine.materials)
   @JoinColumn({ name: 'process_line_id' })
   processLine: ProcessLine;
 
-
-  @OneToOne(() => MaterialsStock, stock => stock.material)
+  @OneToOne(() => MaterialsStock, (stock) => stock.material)
   stock: MaterialsStock;
 }

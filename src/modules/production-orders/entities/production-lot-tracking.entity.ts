@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { ProductionLot } from './production-lot.entity';
 import { ProductionProcess } from './production-process.entity';
 
@@ -31,7 +38,7 @@ export class ProductionLotTracking {
   @CreateDateColumn({ name: 'create_date' })
   createDate: Date;
 
-  @ManyToOne(() => ProductionLot, lot => lot.tracking)
+  @ManyToOne(() => ProductionLot, (lot) => lot.tracking)
   @JoinColumn({ name: 'lot_id' })
   lot: ProductionLot;
 

@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Material } from '../../entities/material.entity';
 import { MaterialsLocation } from '../../entities/materials-location.entity';
 import { MaterialReceiving } from './material-receiving.entity';
@@ -26,7 +33,12 @@ export class MaterialReceivingLot {
   @Column({ type: 'decimal', precision: 15, scale: 2 })
   quantity: number;
 
-  @Column({ name: 'remaining_quantity', type: 'decimal', precision: 15, scale: 2 })
+  @Column({
+    name: 'remaining_quantity',
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+  })
   remainingQuantity: number;
 
   @Column({ length: 50, nullable: true })
@@ -50,7 +62,7 @@ export class MaterialReceivingLot {
   @Column({ name: 'create_by', length: 255, nullable: true })
   createBy: string;
 
-  @ManyToOne(() => MaterialReceiving, receiving => receiving.lots)
+  @ManyToOne(() => MaterialReceiving, (receiving) => receiving.lots)
   @JoinColumn({ name: 'receiving_id' })
   receiving: MaterialReceiving;
 

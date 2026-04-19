@@ -1,4 +1,10 @@
-import { IsString, IsDateString, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsDateString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { AddPlanItemDto } from './plan-item.dto';
 

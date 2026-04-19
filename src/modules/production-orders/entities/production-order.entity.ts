@@ -26,16 +26,22 @@ export class ProductionOrder {
   @Column({ name: 'order_quantity', type: 'decimal', precision: 15, scale: 4 })
   orderQuantity: number;
 
+  /**
+   * บางฐานข้อมูลมีคอลัมน์ quantity NOT NULL คู่กับ order_quantity — ต้องใส่ค่าเดียวกับ orderQuantity
+   */
+  @Column({ name: 'quantity', type: 'decimal', precision: 15, scale: 4 })
+  quantity: number;
+
   @Column({ name: 'lot_size', type: 'decimal', precision: 15, scale: 4 })
   lotSize: number;
 
   @Column({ name: 'total_lots' })
   totalLots: number;
 
-  @Column({ default: 'DRAFT' })
+  @Column({ name: 'status', default: 'DRAFT' })
   status: string; // DRAFT, IN_PROGRESS, COMPLETED, CANCELLED
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'remarks', type: 'text', nullable: true })
   remarks: string;
 
   @Column({ name: 'plan_id', nullable: true })
@@ -62,6 +68,6 @@ export class ProductionOrder {
   @JoinColumn({ name: 'plan_item_id' })
   planItem?: ProductionPlanItem;
 
-  @OneToMany(() => ProductionLot, lot => lot.order)
+  @OneToMany(() => ProductionLot, (lot) => lot.order)
   lots: ProductionLot[];
 }

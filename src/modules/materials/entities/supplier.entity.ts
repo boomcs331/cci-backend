@@ -1,7 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Material } from './material.entity';
 
-@Entity('supplier')
+@Entity({ schema: 'master', name: 'supplier' })
 export class Supplier {
   @PrimaryGeneratedColumn()
   id: number;
@@ -39,6 +46,6 @@ export class Supplier {
   @Column({ length: 255, nullable: true })
   update_by: string;
 
-  @OneToMany(() => Material, material => material.supplier)
+  @OneToMany(() => Material, (material) => material.supplier)
   materials: Material[];
 }

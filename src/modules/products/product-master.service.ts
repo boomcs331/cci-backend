@@ -1,19 +1,40 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProductType, ProductModel, ProductDeliveryType, ProductUnit, ProductLoadingPoint, ProductProcessLine, ProductLocation, Customer } from './entities';
-import { CreateProductMasterDto, UpdateProductMasterDto, PaginationDto } from './dto/product-master.dto';
+import {
+  ProductType,
+  ProductModel,
+  ProductDeliveryType,
+  ProductUnit,
+  ProductLoadingPoint,
+  ProductProcessLine,
+  ProductLocation,
+  Customer,
+} from './entities';
+import {
+  CreateProductMasterDto,
+  UpdateProductMasterDto,
+  PaginationDto,
+} from './dto/product-master.dto';
 
 @Injectable()
 export class ProductMasterService {
   constructor(
     @InjectRepository(ProductType) private typeRepo: Repository<ProductType>,
     @InjectRepository(ProductModel) private modelRepo: Repository<ProductModel>,
-    @InjectRepository(ProductDeliveryType) private deliveryTypeRepo: Repository<ProductDeliveryType>,
+    @InjectRepository(ProductDeliveryType)
+    private deliveryTypeRepo: Repository<ProductDeliveryType>,
     @InjectRepository(ProductUnit) private unitRepo: Repository<ProductUnit>,
-    @InjectRepository(ProductLoadingPoint) private loadingPointRepo: Repository<ProductLoadingPoint>,
-    @InjectRepository(ProductProcessLine) private processLineRepo: Repository<ProductProcessLine>,
-    @InjectRepository(ProductLocation) private locationRepo: Repository<ProductLocation>,
+    @InjectRepository(ProductLoadingPoint)
+    private loadingPointRepo: Repository<ProductLoadingPoint>,
+    @InjectRepository(ProductProcessLine)
+    private processLineRepo: Repository<ProductProcessLine>,
+    @InjectRepository(ProductLocation)
+    private locationRepo: Repository<ProductLocation>,
     @InjectRepository(Customer) private customerRepo: Repository<Customer>,
   ) {}
 
@@ -26,16 +47,31 @@ export class ProductMasterService {
   }
 
   async findAllTypes(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.typeRepo.createQueryBuilder('type');
-    if (search) query.where('type.code ILIKE :search OR type.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`type.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where('type.code ILIKE :search OR type.name ILIKE :search', {
+        search: `%${search}%`,
+      });
+    query
+      .orderBy(`type.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 
   async findAllTypesForDropdown() {
-    return this.typeRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.typeRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findTypeById(id: number) {
@@ -65,16 +101,31 @@ export class ProductMasterService {
   }
 
   async findAllModels(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.modelRepo.createQueryBuilder('model');
-    if (search) query.where('model.code ILIKE :search OR model.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`model.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where('model.code ILIKE :search OR model.name ILIKE :search', {
+        search: `%${search}%`,
+      });
+    query
+      .orderBy(`model.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 
   async findAllModelsForDropdown() {
-    return this.modelRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.modelRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findModelById(id: number) {
@@ -97,23 +148,42 @@ export class ProductMasterService {
 
   // Delivery Types
   async createDeliveryType(dto: CreateProductMasterDto) {
-    const exists = await this.deliveryTypeRepo.findOne({ where: { code: dto.code } });
-    if (exists) throw new ConflictException('Delivery type code already exists');
+    const exists = await this.deliveryTypeRepo.findOne({
+      where: { code: dto.code },
+    });
+    if (exists)
+      throw new ConflictException('Delivery type code already exists');
     const type = this.deliveryTypeRepo.create(dto);
     return this.deliveryTypeRepo.save(type);
   }
 
   async findAllDeliveryTypes(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.deliveryTypeRepo.createQueryBuilder('deliveryType');
-    if (search) query.where('deliveryType.code ILIKE :search OR deliveryType.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`deliveryType.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where(
+        'deliveryType.code ILIKE :search OR deliveryType.name ILIKE :search',
+        { search: `%${search}%` },
+      );
+    query
+      .orderBy(`deliveryType.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 
   async findAllDeliveryTypesForDropdown() {
-    return this.deliveryTypeRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.deliveryTypeRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findDeliveryTypeById(id: number) {
@@ -143,16 +213,31 @@ export class ProductMasterService {
   }
 
   async findAllUnits(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.unitRepo.createQueryBuilder('unit');
-    if (search) query.where('unit.code ILIKE :search OR unit.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`unit.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where('unit.code ILIKE :search OR unit.name ILIKE :search', {
+        search: `%${search}%`,
+      });
+    query
+      .orderBy(`unit.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 
   async findAllUnitsForDropdown() {
-    return this.unitRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.unitRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findUnitById(id: number) {
@@ -175,23 +260,42 @@ export class ProductMasterService {
 
   // Loading Points
   async createLoadingPoint(dto: CreateProductMasterDto) {
-    const exists = await this.loadingPointRepo.findOne({ where: { code: dto.code } });
-    if (exists) throw new ConflictException('Loading point code already exists');
+    const exists = await this.loadingPointRepo.findOne({
+      where: { code: dto.code },
+    });
+    if (exists)
+      throw new ConflictException('Loading point code already exists');
     const point = this.loadingPointRepo.create(dto);
     return this.loadingPointRepo.save(point);
   }
 
   async findAllLoadingPoints(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.loadingPointRepo.createQueryBuilder('loadingPoint');
-    if (search) query.where('loadingPoint.code ILIKE :search OR loadingPoint.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`loadingPoint.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where(
+        'loadingPoint.code ILIKE :search OR loadingPoint.name ILIKE :search',
+        { search: `%${search}%` },
+      );
+    query
+      .orderBy(`loadingPoint.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 
   async findAllLoadingPointsForDropdown() {
-    return this.loadingPointRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.loadingPointRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findLoadingPointById(id: number) {
@@ -214,23 +318,41 @@ export class ProductMasterService {
 
   // Process Lines
   async createProcessLine(dto: CreateProductMasterDto) {
-    const exists = await this.processLineRepo.findOne({ where: { code: dto.code } });
+    const exists = await this.processLineRepo.findOne({
+      where: { code: dto.code },
+    });
     if (exists) throw new ConflictException('Process line code already exists');
     const line = this.processLineRepo.create(dto);
     return this.processLineRepo.save(line);
   }
 
   async findAllProcessLines(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.processLineRepo.createQueryBuilder('processLine');
-    if (search) query.where('processLine.code ILIKE :search OR processLine.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`processLine.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where(
+        'processLine.code ILIKE :search OR processLine.name ILIKE :search',
+        { search: `%${search}%` },
+      );
+    query
+      .orderBy(`processLine.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 
   async findAllProcessLinesForDropdown() {
-    return this.processLineRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.processLineRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findProcessLineById(id: number) {
@@ -253,17 +375,32 @@ export class ProductMasterService {
 
   // Locations
   async createLocation(dto: CreateProductMasterDto) {
-    const exists = await this.locationRepo.findOne({ where: { code: dto.code } });
+    const exists = await this.locationRepo.findOne({
+      where: { code: dto.code },
+    });
     if (exists) throw new ConflictException('Location code already exists');
     const location = this.locationRepo.create(dto);
     return this.locationRepo.save(location);
   }
 
   async findAllLocations(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.locationRepo.createQueryBuilder('location');
-    if (search) query.where('location.code ILIKE :search OR location.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`location.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where(
+        'location.code ILIKE :search OR location.name ILIKE :search',
+        { search: `%${search}%` },
+      );
+    query
+      .orderBy(`location.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
@@ -291,23 +428,41 @@ export class ProductMasterService {
 
   // Customers
   async createCustomer(dto: any) {
-    const exists = await this.customerRepo.findOne({ where: { code: dto.code } });
+    const exists = await this.customerRepo.findOne({
+      where: { code: dto.code },
+    });
     if (exists) throw new ConflictException('Customer code already exists');
     const customer = this.customerRepo.create(dto);
     return this.customerRepo.save(customer);
   }
 
   async findAllCustomers(pagination: PaginationDto) {
-    const { page = 1, limit = 10, search, sortBy = 'id', sortOrder = 'ASC' } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'id',
+      sortOrder = 'ASC',
+    } = pagination;
     const query = this.customerRepo.createQueryBuilder('customer');
-    if (search) query.where('customer.code ILIKE :search OR customer.name ILIKE :search', { search: `%${search}%` });
-    query.orderBy(`customer.${sortBy}`, sortOrder).skip((page - 1) * limit).take(limit);
+    if (search)
+      query.where(
+        'customer.code ILIKE :search OR customer.name ILIKE :search',
+        { search: `%${search}%` },
+      );
+    query
+      .orderBy(`customer.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 
   async findAllCustomersForDropdown() {
-    return this.customerRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.customerRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findCustomerById(id: number) {

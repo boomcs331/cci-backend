@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsBoolean, IsNumber, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class CreateProductDto {
@@ -79,12 +86,12 @@ export class UpdateProductDto {
   description?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   productTypeId?: number;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   defaultLocationId?: number;
 
@@ -93,32 +100,32 @@ export class UpdateProductDto {
   lr?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   lotSize?: number;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   minStock?: number;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   customerId?: number;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   modelId?: number;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   deliveryTypeId?: number;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   unitId?: number;
 
@@ -127,12 +134,12 @@ export class UpdateProductDto {
   scale?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   loadingPointId?: number;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   processLineId?: number;
 
@@ -159,7 +166,7 @@ export class CreateBomDto {
   remarks?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   sequenceOrder?: number;
 }
@@ -170,4 +177,21 @@ export class CreateProductWithBomDto extends CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => CreateBomDto)
   bom?: CreateBomDto[];
+}
+
+/** หนึ่งขั้นในเส้นทางผลิตของสินค้า — processCode เช่น welding, press (จะ normalize เป็น WELDING, PRESS) */
+export class ProductProductionStepItemDto {
+  @IsString()
+  processCode: string;
+
+  @IsOptional()
+  @IsString()
+  processName?: string;
+}
+
+export class SetProductProductionStepsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductProductionStepItemDto)
+  steps: ProductProductionStepItemDto[];
 }

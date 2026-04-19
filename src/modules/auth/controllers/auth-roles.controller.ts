@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Put,
+  UseInterceptors,
+} from '@nestjs/common';
 import { AuthService } from '../auth.service';
 import { AssignPermissionsDto } from '../dto/assign-permissions.dto';
 import { CreateRoleDto } from '../dto/create-role.dto';
@@ -14,7 +26,11 @@ export class AuthRolesController {
   @Post('roles-with-permissions')
   async createRoleWithPermissions(@Body() createRoleDto: CreateRoleDto) {
     const role = await this.authService.createRole(createRoleDto);
-    return withMessage('Role with permissions created successfully', 'role', role);
+    return withMessage(
+      'Role with permissions created successfully',
+      'role',
+      role,
+    );
   }
 
   @Post('roles')
@@ -35,7 +51,10 @@ export class AuthRolesController {
   }
 
   @Put('roles/:id')
-  async updateRole(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
+  async updateRole(
+    @Param('id') id: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+  ) {
     const role = await this.authService.updateRole(id, updateRoleDto);
     return withMessage('Role updated successfully', 'role', role);
   }
@@ -60,20 +79,46 @@ export class AuthRolesController {
   }
 
   @Put('roles/:id/permissions')
-  async assignPermissionsToRole(@Param('id') roleId: string, @Body() assignPermissionsDto: AssignPermissionsDto) {
-    const role = await this.authService.assignPermissionsToRole(roleId, assignPermissionsDto.permissionIds);
-    return withMessage('Permissions assigned to role successfully', 'role', role);
+  async assignPermissionsToRole(
+    @Param('id') roleId: string,
+    @Body() assignPermissionsDto: AssignPermissionsDto,
+  ) {
+    const role = await this.authService.assignPermissionsToRole(
+      roleId,
+      assignPermissionsDto.permissionIds,
+    );
+    return withMessage(
+      'Permissions assigned to role successfully',
+      'role',
+      role,
+    );
   }
 
   @Delete('roles/:roleId/permissions/:permissionId')
-  async removePermissionFromRole(@Param('roleId') roleId: string, @Param('permissionId') permissionId: string) {
-    const role = await this.authService.removePermissionFromRole(roleId, permissionId);
-    return withMessage('Permission removed from role successfully', 'role', role);
+  async removePermissionFromRole(
+    @Param('roleId') roleId: string,
+    @Param('permissionId') permissionId: string,
+  ) {
+    const role = await this.authService.removePermissionFromRole(
+      roleId,
+      permissionId,
+    );
+    return withMessage(
+      'Permission removed from role successfully',
+      'role',
+      role,
+    );
   }
 
   @Post('roles/:roleId/permissions/:permissionId')
-  async addPermissionToRole(@Param('roleId') roleId: string, @Param('permissionId') permissionId: string) {
-    const role = await this.authService.addPermissionToRole(roleId, permissionId);
+  async addPermissionToRole(
+    @Param('roleId') roleId: string,
+    @Param('permissionId') permissionId: string,
+  ) {
+    const role = await this.authService.addPermissionToRole(
+      roleId,
+      permissionId,
+    );
     return withMessage('Permission added to role successfully', 'role', role);
   }
 

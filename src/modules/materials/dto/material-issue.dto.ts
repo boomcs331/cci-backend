@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsNumber, IsArray, ValidateNested, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+  IsDateString,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class DocumentFileDto {
@@ -31,7 +38,7 @@ export class CreateMaterialIssueItemDto {
   unit?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   fromLocationId?: number;
 
@@ -94,7 +101,7 @@ export class CreateProductionIssueDto {
   documentFiles?: DocumentFileDto[];
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   @IsNumber()
   fromLocationId?: number;
 

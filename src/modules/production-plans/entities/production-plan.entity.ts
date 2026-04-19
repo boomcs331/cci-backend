@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { ProductionPlanItem } from './production-plan-item.entity';
 import { MaterialReservation } from './material-reservation.entity';
 
@@ -6,7 +13,7 @@ export enum PlanStatus {
   DRAFT = 'draft',
   RESERVED = 'reserved',
   CONFIRMED = 'confirmed',
-  CANCELLED = 'cancelled'
+  CANCELLED = 'cancelled',
 }
 
 @Entity('production_plans')
@@ -41,9 +48,9 @@ export class ProductionPlan {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
-  @OneToMany(() => ProductionPlanItem, item => item.plan)
+  @OneToMany(() => ProductionPlanItem, (item) => item.plan)
   items: ProductionPlanItem[];
 
-  @OneToMany(() => MaterialReservation, reservation => reservation.plan)
+  @OneToMany(() => MaterialReservation, (reservation) => reservation.plan)
   reservations: MaterialReservation[];
 }

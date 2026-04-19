@@ -1,7 +1,22 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ParseIntPipe, Query, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  ParseIntPipe,
+  Query,
+  Patch,
+} from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { ProductMasterService } from './product-master.service';
-import { CreateProductMasterDto, UpdateProductMasterDto, PaginationDto } from './dto/product-master.dto';
+import {
+  CreateProductMasterDto,
+  UpdateProductMasterDto,
+  PaginationDto,
+} from './dto/product-master.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { ResponseHelper } from '@app/common';
 
@@ -21,8 +36,12 @@ export class ProductsMasterController {
 
   @Get('locations/all')
   async getAllLocationsForDropdown() {
-    const locations = await this.productMasterService.findAllLocationsForDropdown();
-    return ResponseHelper.success(locations, 'Locations retrieved successfully');
+    const locations =
+      await this.productMasterService.findAllLocationsForDropdown();
+    return ResponseHelper.success(
+      locations,
+      'Locations retrieved successfully',
+    );
   }
 
   @Get('locations')
@@ -38,7 +57,10 @@ export class ProductsMasterController {
   }
 
   @Patch('locations/:id')
-  async updateLocation(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductMasterDto) {
+  async updateLocation(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductMasterDto,
+  ) {
     const location = await this.productMasterService.updateLocation(id, dto);
     return ResponseHelper.success(location, 'Location updated successfully');
   }
@@ -58,8 +80,12 @@ export class ProductsMasterController {
 
   @Get('customers/all')
   async getAllCustomersForDropdown() {
-    const customers = await this.productMasterService.findAllCustomersForDropdown();
-    return ResponseHelper.success(customers, 'Customers retrieved successfully');
+    const customers =
+      await this.productMasterService.findAllCustomersForDropdown();
+    return ResponseHelper.success(
+      customers,
+      'Customers retrieved successfully',
+    );
   }
 
   @Get('customers')
@@ -75,7 +101,10 @@ export class ProductsMasterController {
   }
 
   @Patch('customers/:id')
-  async updateCustomer(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCustomerDto) {
+  async updateCustomer(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCustomerDto,
+  ) {
     const customer = await this.productMasterService.updateCustomer(id, dto);
     return ResponseHelper.success(customer, 'Customer updated successfully');
   }
@@ -96,13 +125,19 @@ export class ProductsMasterController {
   @Get('types/all')
   async getAllTypesForDropdown() {
     const types = await this.productMasterService.findAllTypesForDropdown();
-    return ResponseHelper.success(types, 'Product types retrieved successfully');
+    return ResponseHelper.success(
+      types,
+      'Product types retrieved successfully',
+    );
   }
 
   @Get('types')
   async getAllTypes(@Query() pagination: PaginationDto) {
     const result = await this.productMasterService.findAllTypes(pagination);
-    return ResponseHelper.success(result, 'Product types retrieved successfully');
+    return ResponseHelper.success(
+      result,
+      'Product types retrieved successfully',
+    );
   }
 
   @Get('types/:id')
@@ -112,7 +147,10 @@ export class ProductsMasterController {
   }
 
   @Patch('types/:id')
-  async updateType(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductMasterDto) {
+  async updateType(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductMasterDto,
+  ) {
     const type = await this.productMasterService.updateType(id, dto);
     return ResponseHelper.success(type, 'Product type updated successfully');
   }
@@ -133,23 +171,35 @@ export class ProductsMasterController {
   @Get('models/all')
   async getAllModelsForDropdown() {
     const models = await this.productMasterService.findAllModelsForDropdown();
-    return ResponseHelper.success(models, 'Product models retrieved successfully');
+    return ResponseHelper.success(
+      models,
+      'Product models retrieved successfully',
+    );
   }
 
   @Get('models')
   async getAllModels(@Query() pagination: PaginationDto) {
     const result = await this.productMasterService.findAllModels(pagination);
-    return ResponseHelper.success(result, 'Product models retrieved successfully');
+    return ResponseHelper.success(
+      result,
+      'Product models retrieved successfully',
+    );
   }
 
   @Get('models/:id')
   async getModelById(@Param('id', ParseIntPipe) id: number) {
     const model = await this.productMasterService.findModelById(id);
-    return ResponseHelper.success(model, 'Product model retrieved successfully');
+    return ResponseHelper.success(
+      model,
+      'Product model retrieved successfully',
+    );
   }
 
   @Patch('models/:id')
-  async updateModel(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductMasterDto) {
+  async updateModel(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductMasterDto,
+  ) {
     const model = await this.productMasterService.updateModel(id, dto);
     return ResponseHelper.success(model, 'Product model updated successfully');
   }
@@ -169,14 +219,22 @@ export class ProductsMasterController {
 
   @Get('delivery-types/all')
   async getAllDeliveryTypesForDropdown() {
-    const types = await this.productMasterService.findAllDeliveryTypesForDropdown();
-    return ResponseHelper.success(types, 'Delivery types retrieved successfully');
+    const types =
+      await this.productMasterService.findAllDeliveryTypesForDropdown();
+    return ResponseHelper.success(
+      types,
+      'Delivery types retrieved successfully',
+    );
   }
 
   @Get('delivery-types')
   async getAllDeliveryTypes(@Query() pagination: PaginationDto) {
-    const result = await this.productMasterService.findAllDeliveryTypes(pagination);
-    return ResponseHelper.success(result, 'Delivery types retrieved successfully');
+    const result =
+      await this.productMasterService.findAllDeliveryTypes(pagination);
+    return ResponseHelper.success(
+      result,
+      'Delivery types retrieved successfully',
+    );
   }
 
   @Get('delivery-types/:id')
@@ -186,7 +244,10 @@ export class ProductsMasterController {
   }
 
   @Put('delivery-types/:id')
-  async updateDeliveryType(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductMasterDto) {
+  async updateDeliveryType(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductMasterDto,
+  ) {
     const type = await this.productMasterService.updateDeliveryType(id, dto);
     return ResponseHelper.success(type, 'Delivery type updated successfully');
   }
@@ -223,7 +284,10 @@ export class ProductsMasterController {
   }
 
   @Put('units/:id')
-  async updateUnit(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductMasterDto) {
+  async updateUnit(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductMasterDto,
+  ) {
     const unit = await this.productMasterService.updateUnit(id, dto);
     return ResponseHelper.success(unit, 'Unit updated successfully');
   }
@@ -243,24 +307,38 @@ export class ProductsMasterController {
 
   @Get('loading-points/all')
   async getAllLoadingPointsForDropdown() {
-    const points = await this.productMasterService.findAllLoadingPointsForDropdown();
-    return ResponseHelper.success(points, 'Loading points retrieved successfully');
+    const points =
+      await this.productMasterService.findAllLoadingPointsForDropdown();
+    return ResponseHelper.success(
+      points,
+      'Loading points retrieved successfully',
+    );
   }
 
   @Get('loading-points')
   async getAllLoadingPoints(@Query() pagination: PaginationDto) {
-    const result = await this.productMasterService.findAllLoadingPoints(pagination);
-    return ResponseHelper.success(result, 'Loading points retrieved successfully');
+    const result =
+      await this.productMasterService.findAllLoadingPoints(pagination);
+    return ResponseHelper.success(
+      result,
+      'Loading points retrieved successfully',
+    );
   }
 
   @Get('loading-points/:id')
   async getLoadingPointById(@Param('id', ParseIntPipe) id: number) {
     const point = await this.productMasterService.findLoadingPointById(id);
-    return ResponseHelper.success(point, 'Loading point retrieved successfully');
+    return ResponseHelper.success(
+      point,
+      'Loading point retrieved successfully',
+    );
   }
 
   @Put('loading-points/:id')
-  async updateLoadingPoint(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductMasterDto) {
+  async updateLoadingPoint(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductMasterDto,
+  ) {
     const point = await this.productMasterService.updateLoadingPoint(id, dto);
     return ResponseHelper.success(point, 'Loading point updated successfully');
   }
@@ -280,14 +358,22 @@ export class ProductsMasterController {
 
   @Get('process-lines/all')
   async getAllProcessLinesForDropdown() {
-    const lines = await this.productMasterService.findAllProcessLinesForDropdown();
-    return ResponseHelper.success(lines, 'Process lines retrieved successfully');
+    const lines =
+      await this.productMasterService.findAllProcessLinesForDropdown();
+    return ResponseHelper.success(
+      lines,
+      'Process lines retrieved successfully',
+    );
   }
 
   @Get('process-lines')
   async getAllProcessLines(@Query() pagination: PaginationDto) {
-    const result = await this.productMasterService.findAllProcessLines(pagination);
-    return ResponseHelper.success(result, 'Process lines retrieved successfully');
+    const result =
+      await this.productMasterService.findAllProcessLines(pagination);
+    return ResponseHelper.success(
+      result,
+      'Process lines retrieved successfully',
+    );
   }
 
   @Get('process-lines/:id')
@@ -297,7 +383,10 @@ export class ProductsMasterController {
   }
 
   @Put('process-lines/:id')
-  async updateProcessLine(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductMasterDto) {
+  async updateProcessLine(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductMasterDto,
+  ) {
     const line = await this.productMasterService.updateProcessLine(id, dto);
     return ResponseHelper.success(line, 'Process line updated successfully');
   }

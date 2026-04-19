@@ -1,4 +1,10 @@
-import { IsArray, IsNumber, IsObject, IsOptional, IsPositive } from 'class-validator';
+import {
+  IsArray,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsPositive,
+} from 'class-validator';
 
 export class GenerateProductQrOrdersFromPlanDto {
   @IsOptional()

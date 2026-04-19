@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { MaterialIssue } from './material-issue.entity';
 import { Material } from './material.entity';
 import { MaterialsLocation } from './materials-location.entity';
@@ -14,7 +21,13 @@ export class MaterialIssueItem {
   @Column({ name: 'material_id' })
   materialId: number;
 
-  @Column({ name: 'quantity_per_unit', type: 'decimal', precision: 15, scale: 4, nullable: true })
+  @Column({
+    name: 'quantity_per_unit',
+    type: 'decimal',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
   quantityPerUnit: number;
 
   @Column({ name: 'issued_quantity', type: 'decimal', precision: 15, scale: 4 })
@@ -35,7 +48,7 @@ export class MaterialIssueItem {
   @Column({ name: 'create_by', length: 255, nullable: true })
   createBy: string;
 
-  @ManyToOne(() => MaterialIssue, issue => issue.items)
+  @ManyToOne(() => MaterialIssue, (issue) => issue.items)
   @JoinColumn({ name: 'issue_id' })
   issue: MaterialIssue;
 

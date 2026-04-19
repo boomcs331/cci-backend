@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { MaterialIssuing } from './material-issuing.entity';
 import { MaterialReceivingLot } from './material-receiving-lot.entity';
 
@@ -25,7 +32,7 @@ export class MaterialIssuingLot {
   @CreateDateColumn({ name: 'create_date' })
   createDate: Date;
 
-  @ManyToOne(() => MaterialIssuing, issuing => issuing.lots)
+  @ManyToOne(() => MaterialIssuing, (issuing) => issuing.lots)
   @JoinColumn({ name: 'issuing_id' })
   issuing: MaterialIssuing;
 

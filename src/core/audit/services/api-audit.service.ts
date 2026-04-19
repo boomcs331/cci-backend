@@ -91,19 +91,19 @@ export class ApiAuditService {
           where: { loggedAt: MoreThan(cutoffTime) },
         }),
         this.apiLogRepository.count({
-          where: { 
+          where: {
             loggedAt: MoreThan(cutoffTime),
             statusCode: Between(200, 399),
           },
         }),
         this.apiLogRepository.count({
-          where: { 
+          where: {
             loggedAt: MoreThan(cutoffTime),
             statusCode: Between(400, 499),
           },
         }),
         this.apiLogRepository.count({
-          where: { 
+          where: {
             loggedAt: MoreThan(cutoffTime),
             statusCode: Between(500, 599),
           },
@@ -126,7 +126,7 @@ export class ApiAuditService {
       // Get top endpoints
       const topEndpointsQuery = await this.apiLogRepository
         .createQueryBuilder('log')
-        .select('CONCAT(log.method, \' \', log.url)', 'endpoint')
+        .select("CONCAT(log.method, ' ', log.url)", 'endpoint')
         .addSelect('COUNT(*)', 'count')
         .where('log.loggedAt > :cutoffTime', { cutoffTime })
         .groupBy('log.method, log.url')
@@ -146,12 +146,12 @@ export class ApiAuditService {
         .getRawMany();
 
       const topEndpoints: Record<string, number> = {};
-      topEndpointsQuery.forEach(item => {
+      topEndpointsQuery.forEach((item) => {
         topEndpoints[item.endpoint] = parseInt(item.count);
       });
 
       const topIPs: Record<string, number> = {};
-      topIPsQuery.forEach(item => {
+      topIPsQuery.forEach((item) => {
         topIPs[item.ip] = parseInt(item.count);
       });
 
@@ -183,7 +183,10 @@ export class ApiAuditService {
   }
 
   // Get slow requests
-  async getSlowRequests(thresholdMs: number = 1000, limit: number = 20): Promise<ApiLog[]> {
+  async getSlowRequests(
+    thresholdMs: number = 1000,
+    limit: number = 20,
+  ): Promise<ApiLog[]> {
     try {
       return await this.apiLogRepository.find({
         where: { duration: MoreThan(thresholdMs) },
@@ -211,7 +214,11 @@ export class ApiAuditService {
   }
 
   // Get requests by endpoint
-  async getRequestsByEndpoint(method: string, url: string, limit: number = 50): Promise<ApiLog[]> {
+  async getRequestsByEndpoint(
+    method: string,
+    url: string,
+    limit: number = 50,
+  ): Promise<ApiLog[]> {
     try {
       return await this.apiLogRepository
         .createQueryBuilder('log')
@@ -239,7 +246,9 @@ export class ApiAuditService {
         .where('logged_at < :cutoffDate', { cutoffDate })
         .execute();
 
-      this.logger.log(`Cleaned ${result.affected} old API logs older than ${daysToKeep} days`);
+      this.logger.log(
+        `Cleaned ${result.affected} old API logs older than ${daysToKeep} days`,
+      );
       return result.affected || 0;
     } catch (error) {
       this.logger.error(`Failed to clean old logs: ${error.message}`);
@@ -250,13 +259,14 @@ export class ApiAuditService {
   // Get database statistics
   async getDatabaseStats(): Promise<any> {
     try {
-      const [totalLogs, errorLogs, slowLogs, oldestLog, newestLog] = await Promise.all([
-        this.apiLogRepository.count(),
-        this.apiLogRepository.count({ where: { isError: true } }),
-        this.apiLogRepository.count({ where: { isSlow: true } }),
-        this.apiLogRepository.findOne({ order: { loggedAt: 'ASC' } }),
-        this.apiLogRepository.findOne({ order: { loggedAt: 'DESC' } }),
-      ]);
+      const [totalLogs, errorLogs, slowLogs, oldestLog, newestLog] =
+        await Promise.all([
+          this.apiLogRepository.count(),
+          this.apiLogRepository.count({ where: { isError: true } }),
+          this.apiLogRepository.count({ where: { isSlow: true } }),
+          this.apiLogRepository.findOne({ order: { loggedAt: 'ASC' } }),
+          this.apiLogRepository.findOne({ order: { loggedAt: 'DESC' } }),
+        ]);
 
       return {
         totalLogs,

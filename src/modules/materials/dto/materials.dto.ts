@@ -197,7 +197,6 @@ export class CreateMaterialsLocationDto {
   createBy?: string;
 }
 
-
 export class CreateSupplierDto {
   @IsString()
   code: string;

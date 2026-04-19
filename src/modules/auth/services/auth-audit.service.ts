@@ -1,13 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
-import { AuthLog, AuthAction } from '../../../core/audit/entities/auth-log.entity';
+import {
+  AuthLog,
+  AuthAction,
+} from '../../../core/audit/entities/auth-log.entity';
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 export interface LoginAuditLog {
   timestamp: string;
-  action: 'LOGIN_ATTEMPT' | 'LOGIN_SUCCESS' | 'LOGIN_FAILED' | 'REGISTRATION_ATTEMPT' | 'REGISTRATION_SUCCESS' | 'REGISTRATION_FAILED';
+  action:
+    | 'LOGIN_ATTEMPT'
+    | 'LOGIN_SUCCESS'
+    | 'LOGIN_FAILED'
+    | 'REGISTRATION_ATTEMPT'
+    | 'REGISTRATION_SUCCESS'
+    | 'REGISTRATION_FAILED';
   username: string;
   email?: string;
   userId?: string;
@@ -54,7 +63,7 @@ export class AuthAuditService {
     userAgent: string,
     duration: number,
     roles: string[],
-    permissionCount: number
+    permissionCount: number,
   ) {
     try {
       const authLog = this.authLogRepository.create({
@@ -86,8 +95,10 @@ export class AuthAuditService {
         permissionCount,
       };
       this.writeAuditLog(logEntry);
-      
-      this.logger.log(`Login successful: ${username} (${userId}) from ${clientIp} - Duration: ${duration}ms`);
+
+      this.logger.log(
+        `Login successful: ${username} (${userId}) from ${clientIp} - Duration: ${duration}ms`,
+      );
     } catch (error) {
       this.logger.error(`Failed to log login success: ${error.message}`);
     }
@@ -98,7 +109,7 @@ export class AuthAuditService {
     clientIp: string,
     userAgent: string,
     duration: number,
-    errorMessage: string
+    errorMessage: string,
   ) {
     try {
       const authLog = this.authLogRepository.create({
@@ -124,14 +135,21 @@ export class AuthAuditService {
         errorMessage,
       };
       this.writeAuditLog(logEntry);
-      
-      this.logger.warn(`Login failed: ${username} from ${clientIp} - Error: ${errorMessage} - Duration: ${duration}ms`);
+
+      this.logger.warn(
+        `Login failed: ${username} from ${clientIp} - Error: ${errorMessage} - Duration: ${duration}ms`,
+      );
     } catch (error) {
       this.logger.error(`Failed to log login failure: ${error.message}`);
     }
   }
 
-  logRegistrationAttempt(username: string, email: string, clientIp: string, userAgent: string) {
+  logRegistrationAttempt(
+    username: string,
+    email: string,
+    clientIp: string,
+    userAgent: string,
+  ) {
     const logEntry: LoginAuditLog = {
       timestamp: new Date().toISOString(),
       action: 'REGISTRATION_ATTEMPT',
@@ -143,7 +161,9 @@ export class AuthAuditService {
     };
 
     this.writeAuditLog(logEntry);
-    this.logger.log(`Registration attempt: ${username} (${email}) from ${clientIp}`);
+    this.logger.log(
+      `Registration attempt: ${username} (${email}) from ${clientIp}`,
+    );
   }
 
   logRegistrationSuccess(
@@ -153,7 +173,7 @@ export class AuthAuditService {
     clientIp: string,
     userAgent: string,
     duration: number,
-    roles: string[]
+    roles: string[],
   ) {
     const logEntry: LoginAuditLog = {
       timestamp: new Date().toISOString(),
@@ -168,7 +188,9 @@ export class AuthAuditService {
     };
 
     this.writeAuditLog(logEntry);
-    this.logger.log(`Registration successful: ${username} (${userId}) from ${clientIp} - Duration: ${duration}ms`);
+    this.logger.log(
+      `Registration successful: ${username} (${userId}) from ${clientIp} - Duration: ${duration}ms`,
+    );
   }
 
   logRegistrationFailure(
@@ -177,7 +199,7 @@ export class AuthAuditService {
     clientIp: string,
     userAgent: string,
     duration: number,
-    errorMessage: string
+    errorMessage: string,
   ) {
     const logEntry: LoginAuditLog = {
       timestamp: new Date().toISOString(),
@@ -191,7 +213,9 @@ export class AuthAuditService {
     };
 
     this.writeAuditLog(logEntry);
-    this.logger.warn(`Registration failed: ${username} (${email}) from ${clientIp} - Error: ${errorMessage} - Duration: ${duration}ms`);
+    this.logger.warn(
+      `Registration failed: ${username} (${email}) from ${clientIp} - Error: ${errorMessage} - Duration: ${duration}ms`,
+    );
   }
 
   private writeAuditLog(logEntry: LoginAuditLog) {
@@ -211,25 +235,31 @@ export class AuthAuditService {
         take: limit,
       });
     } catch (error) {
-      this.logger.error(`Failed to get recent login attempts: ${error.message}`);
+      this.logger.error(
+        `Failed to get recent login attempts: ${error.message}`,
+      );
       return [];
     }
   }
 
   // Method to get failed login attempts for security monitoring
-  async getFailedLoginAttempts(timeWindowMinutes: number = 60): Promise<AuthLog[]> {
+  async getFailedLoginAttempts(
+    timeWindowMinutes: number = 60,
+  ): Promise<AuthLog[]> {
     try {
       const cutoffTime = new Date(Date.now() - timeWindowMinutes * 60 * 1000);
-      
+
       return await this.authLogRepository.find({
-        where: { 
+        where: {
           action: AuthAction.LOGIN_FAILED,
           loggedAt: MoreThan(cutoffTime),
         },
         order: { loggedAt: 'DESC' },
       });
     } catch (error) {
-      this.logger.error(`Failed to get failed login attempts: ${error.message}`);
+      this.logger.error(
+        `Failed to get failed login attempts: ${error.message}`,
+      );
       return [];
     }
   }
@@ -239,26 +269,28 @@ export class AuthAuditService {
     try {
       const cutoffTime = new Date(Date.now() - timeWindowMinutes * 60 * 1000);
 
-      const [totalAttempts, successfulLogins, failedLogins] = await Promise.all([
-        this.authLogRepository.count({
-          where: { 
-            action: AuthAction.LOGIN_ATTEMPT,
-            loggedAt: MoreThan(cutoffTime),
-          },
-        }),
-        this.authLogRepository.count({
-          where: { 
-            action: AuthAction.LOGIN_SUCCESS,
-            loggedAt: MoreThan(cutoffTime),
-          },
-        }),
-        this.authLogRepository.count({
-          where: { 
-            action: AuthAction.LOGIN_FAILED,
-            loggedAt: MoreThan(cutoffTime),
-          },
-        }),
-      ]);
+      const [totalAttempts, successfulLogins, failedLogins] = await Promise.all(
+        [
+          this.authLogRepository.count({
+            where: {
+              action: AuthAction.LOGIN_ATTEMPT,
+              loggedAt: MoreThan(cutoffTime),
+            },
+          }),
+          this.authLogRepository.count({
+            where: {
+              action: AuthAction.LOGIN_SUCCESS,
+              loggedAt: MoreThan(cutoffTime),
+            },
+          }),
+          this.authLogRepository.count({
+            where: {
+              action: AuthAction.LOGIN_FAILED,
+              loggedAt: MoreThan(cutoffTime),
+            },
+          }),
+        ],
+      );
 
       // Get top failed IPs
       const topFailedIPs = await this.authLogRepository
@@ -276,7 +308,10 @@ export class AuthAuditService {
         totalAttempts,
         successfulLogins,
         failedLogins,
-        successRate: totalAttempts > 0 ? Math.round((successfulLogins / totalAttempts) * 100) : 0,
+        successRate:
+          totalAttempts > 0
+            ? Math.round((successfulLogins / totalAttempts) * 100)
+            : 0,
         topFailedIPs: topFailedIPs.reduce((acc, item) => {
           acc[item.ip] = parseInt(item.count);
           return acc;

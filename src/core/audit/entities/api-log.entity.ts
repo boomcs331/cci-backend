@@ -6,7 +6,7 @@ import {
   Index,
 } from 'typeorm';
 
-@Entity('api_logs')
+@Entity({ schema: 'logs', name: 'api_logs' })
 @Index(['clientIp'])
 @Index(['statusCode'])
 @Index(['method', 'url'])

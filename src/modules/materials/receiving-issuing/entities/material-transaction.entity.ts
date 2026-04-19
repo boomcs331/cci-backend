@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Material } from '../../entities/material.entity';
 import { MaterialReceivingLot } from './material-receiving-lot.entity';
 
@@ -28,7 +35,13 @@ export class MaterialTransaction {
   @Column({ type: 'decimal', precision: 15, scale: 2 })
   quantity: number;
 
-  @Column({ name: 'remaining_quantity', type: 'decimal', precision: 15, scale: 2, nullable: true })
+  @Column({
+    name: 'remaining_quantity',
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    nullable: true,
+  })
   remainingQuantity: number;
 
   @Column({ name: 'reference_no', length: 50, nullable: true })

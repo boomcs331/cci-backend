@@ -1,4 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+} from 'typeorm';
 import { ProductionOrder } from './production-order.entity';
 import { ProductionProcess } from './production-process.entity';
 import { ProductionLotTracking } from './production-lot-tracking.entity';
@@ -11,8 +19,17 @@ export class ProductionLot {
   @Column({ name: 'order_id' })
   orderId: number;
 
+  /** เลขล็อตหลักแบบ material: PG{yyyyMMdd}-{run} — QR สร้างจากค่านี้ */
   @Column({ name: 'lot_no', unique: true })
   lotNo: string;
+
+  /** คู่แบบ PD ในรับเข้าวัตถุดิบ — งานผลิตใช้วันที่สร้างใบสั่ง */
+  @Column({ name: 'lot_pd_no', length: 50, nullable: true })
+  lotPdNo?: string;
+
+  /** อ้างอิงตาม order เดิม เช่น PO2025040001-LOT001 */
+  @Column({ name: 'order_lot_label', length: 100, nullable: true })
+  orderLotLabel?: string;
 
   @Column({ name: 'qr_code', unique: true })
   qrCode: string;
@@ -32,7 +49,7 @@ export class ProductionLot {
   @CreateDateColumn({ name: 'create_date' })
   createDate: Date;
 
-  @ManyToOne(() => ProductionOrder, order => order.lots)
+  @ManyToOne(() => ProductionOrder, (order) => order.lots)
   @JoinColumn({ name: 'order_id' })
   order: ProductionOrder;
 
@@ -40,6 +57,6 @@ export class ProductionLot {
   @JoinColumn({ name: 'current_process_id' })
   currentProcess: ProductionProcess;
 
-  @OneToMany(() => ProductionLotTracking, tracking => tracking.lot)
+  @OneToMany(() => ProductionLotTracking, (tracking) => tracking.lot)
   tracking: ProductionLotTracking[];
 }

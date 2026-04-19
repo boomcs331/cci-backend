@@ -1,4 +1,11 @@
-import { IsNumber, IsString, IsOptional, IsPositive, IsInt } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  IsOptional,
+  IsPositive,
+  IsInt,
+  IsArray,
+} from 'class-validator';
 
 export class CreateProductionOrderDto {
   @IsNumber()
@@ -52,4 +59,9 @@ export class CreateProcessDto {
 
   @IsNumber()
   sequenceOrder: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedDepartmentCodes?: string[];
 }

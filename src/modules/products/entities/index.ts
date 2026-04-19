@@ -8,3 +8,6 @@ export { ProductDeliveryType } from './product-delivery-type.entity';
 export { ProductUnit } from './product-unit.entity';
 export { ProductLoadingPoint } from './product-loading-point.entity';
 export { ProductProcessLine } from './product-process-line.entity';
+export { ProductProductionStep } from './product-production-step.entity';
+export { ProductsStock } from './products-stock.entity';
+export { ProductSalesReservation } from './product-sales-reservation.entity';

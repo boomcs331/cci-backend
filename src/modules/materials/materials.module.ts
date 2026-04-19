@@ -7,7 +7,21 @@ import { MasterService } from './master.service';
 import { MaterialIssuesController } from './material-issues.controller';
 import { MaterialIssuesService } from './material-issues.service';
 import { UploadController } from './upload.controller';
-import { Material, MaterialsType, MaterialsLocation, MaterialsStock, Supplier, Model, DeliveryType, Unit, LoadingPoint, ProcessLine, MaterialIssue, MaterialIssueItem, MaterialIssueDocument } from './entities';
+import {
+  Material,
+  MaterialsType,
+  MaterialsLocation,
+  MaterialsStock,
+  Supplier,
+  Model,
+  DeliveryType,
+  Unit,
+  LoadingPoint,
+  ProcessLine,
+  MaterialIssue,
+  MaterialIssueItem,
+  MaterialIssueDocument,
+} from './entities';
 import { Product, ProductBom } from '../products/entities';
 import { ReceivingIssuingModule } from './receiving-issuing';
 
@@ -32,7 +46,12 @@ import { ReceivingIssuingModule } from './receiving-issuing';
     ]),
     ReceivingIssuingModule,
   ],
-  controllers: [MaterialsController, MasterController, MaterialIssuesController, UploadController],
+  controllers: [
+    MaterialsController,
+    MasterController,
+    MaterialIssuesController,
+    UploadController,
+  ],
   providers: [MaterialsService, MasterService, MaterialIssuesService],
   exports: [MaterialsService, MasterService, MaterialIssuesService],
 })

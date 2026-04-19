@@ -1,9 +1,34 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Product, ProductBom, ProductLocation, Customer, ProductModel, ProductType, ProductDeliveryType, ProductUnit, ProductLoadingPoint, ProductProcessLine } from './entities';
+import {
+  Product,
+  ProductBom,
+  ProductLocation,
+  Customer,
+  ProductModel,
+  ProductType,
+  ProductDeliveryType,
+  ProductUnit,
+  ProductLoadingPoint,
+  ProductProcessLine,
+  ProductProductionStep,
+} from './entities';
 import { Material } from '../materials/entities/material.entity';
-import { CreateProductDto, UpdateProductDto, CreateProductWithBomDto, CreateBomDto } from './dto/product.dto';
+import { ProductStockService } from './product-stock.service';
+import { ProductionProcess } from '../production-orders/entities/production-process.entity';
+import {
+  CreateProductDto,
+  UpdateProductDto,
+  CreateProductWithBomDto,
+  CreateBomDto,
+  ProductProductionStepItemDto,
+} from './dto/product.dto';
 
 @Injectable()
 export class ProductsService {
@@ -30,8 +55,23 @@ export class ProductsService {
     private processLineRepo: Repository<ProductProcessLine>,
     @InjectRepository(Material)
     private materialRepo: Repository<Material>,
+    @InjectRepository(ProductProductionStep)
+    private productStepRepo: Repository<ProductProductionStep>,
     private dataSource: DataSource,
+    private readonly productStockService: ProductStockService,
   ) {}
+
+  private normalizeProcessCode(code: string): string {
+    return code.trim().toUpperCase().replace(/\s+/g, '_');
+  }
+
+  /** WELDING -> Welding, PRESS_FIT -> Press Fit */
+  private titleFromCode(normalizedCode: string): string {
+    return normalizedCode
+      .split('_')
+      .map((w) => (w.length ? w[0] + w.slice(1).toLowerCase() : ''))
+      .join(' ');
+  }
 
   async findAllWithoutPagination() {
     return this.productRepo.find({
@@ -46,7 +86,10 @@ export class ProductsService {
   }
 
   async findAllCustomers() {
-    return this.customerRepo.find({ where: { isActive: true }, order: { id: 'ASC' } });
+    return this.customerRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
   }
 
   async findAll(
@@ -55,7 +98,7 @@ export class ProductsService {
     search?: string,
     sortBy: string = 'id',
     sortOrder: string = 'ASC',
-    isActive?: boolean
+    isActive?: boolean,
   ): Promise<{
     products: Product[];
     total: number;
@@ -78,11 +121,17 @@ export class ProductsService {
     if (search) {
       queryBuilder.andWhere(
         '(product.productCode ILIKE :search OR product.productName ILIKE :search OR product.description ILIKE :search)',
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
 
-    const validSortColumns = ['id', 'productCode', 'productName', 'createDate', 'updateDate'];
+    const validSortColumns = [
+      'id',
+      'productCode',
+      'productName',
+      'createDate',
+      'updateDate',
+    ];
     const sortColumn = validSortColumns.includes(sortBy) ? sortBy : 'id';
     const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 
@@ -106,7 +155,13 @@ export class ProductsService {
   async findOne(id: number) {
     const product = await this.productRepo.findOne({
       where: { id },
-      relations: ['boms', 'boms.material', 'boms.material.materialsType'],
+      relations: [
+        'boms',
+        'boms.material',
+        'boms.material.materialsType',
+        'productionSteps',
+        'productionSteps.process',
+      ],
     });
     if (!product) throw new NotFoundException('Product not found');
     return product;
@@ -115,7 +170,13 @@ export class ProductsService {
   async findByCode(code: string) {
     const product = await this.productRepo.findOne({
       where: { productCode: code },
-      relations: ['boms', 'boms.material', 'boms.material.materialsType'],
+      relations: [
+        'boms',
+        'boms.material',
+        'boms.material.materialsType',
+        'productionSteps',
+        'productionSteps.process',
+      ],
     });
     if (!product) throw new NotFoundException('Product not found');
     return product;
@@ -128,58 +189,102 @@ export class ProductsService {
 
     try {
       console.log('🔍 Checking if product code exists:', dto.productCode);
-      const exists = await this.productRepo.findOne({ where: { productCode: dto.productCode } });
+      const exists = await this.productRepo.findOne({
+        where: { productCode: dto.productCode },
+      });
       if (exists) {
         console.log('❌ Product code already exists:', dto.productCode);
         throw new ConflictException('Product code already exists');
       }
 
       if (dto.customerId) {
-        const customer = await this.customerRepo.findOne({ where: { id: dto.customerId } });
-        if (!customer) throw new NotFoundException(`Customer with id ${dto.customerId} not found`);
+        const customer = await this.customerRepo.findOne({
+          where: { id: dto.customerId },
+        });
+        if (!customer)
+          throw new NotFoundException(
+            `Customer with id ${dto.customerId} not found`,
+          );
       }
 
       if (dto.productTypeId) {
-        const type = await this.typeRepo.findOne({ where: { id: dto.productTypeId } });
-        if (!type) throw new NotFoundException(`Product type with id ${dto.productTypeId} not found`);
+        const type = await this.typeRepo.findOne({
+          where: { id: dto.productTypeId },
+        });
+        if (!type)
+          throw new NotFoundException(
+            `Product type with id ${dto.productTypeId} not found`,
+          );
       }
 
       if (dto.defaultLocationId) {
-        const location = await this.locationRepo.findOne({ where: { id: dto.defaultLocationId } });
-        if (!location) throw new NotFoundException(`Location with id ${dto.defaultLocationId} not found`);
+        const location = await this.locationRepo.findOne({
+          where: { id: dto.defaultLocationId },
+        });
+        if (!location)
+          throw new NotFoundException(
+            `Location with id ${dto.defaultLocationId} not found`,
+          );
       }
 
       if (dto.modelId) {
-        const model = await this.modelRepo.findOne({ where: { id: dto.modelId } });
-        if (!model) throw new NotFoundException(`Model with id ${dto.modelId} not found`);
+        const model = await this.modelRepo.findOne({
+          where: { id: dto.modelId },
+        });
+        if (!model)
+          throw new NotFoundException(`Model with id ${dto.modelId} not found`);
       }
 
       if (dto.deliveryTypeId) {
-        const deliveryType = await this.deliveryTypeRepo.findOne({ where: { id: dto.deliveryTypeId } });
-        if (!deliveryType) throw new NotFoundException(`Delivery type with id ${dto.deliveryTypeId} not found`);
+        const deliveryType = await this.deliveryTypeRepo.findOne({
+          where: { id: dto.deliveryTypeId },
+        });
+        if (!deliveryType)
+          throw new NotFoundException(
+            `Delivery type with id ${dto.deliveryTypeId} not found`,
+          );
       }
 
       if (dto.unitId) {
         const unit = await this.unitRepo.findOne({ where: { id: dto.unitId } });
-        if (!unit) throw new NotFoundException(`Unit with id ${dto.unitId} not found`);
+        if (!unit)
+          throw new NotFoundException(`Unit with id ${dto.unitId} not found`);
       }
 
       if (dto.loadingPointId) {
-        const loadingPoint = await this.loadingPointRepo.findOne({ where: { id: dto.loadingPointId } });
-        if (!loadingPoint) throw new NotFoundException(`Loading point with id ${dto.loadingPointId} not found`);
+        const loadingPoint = await this.loadingPointRepo.findOne({
+          where: { id: dto.loadingPointId },
+        });
+        if (!loadingPoint)
+          throw new NotFoundException(
+            `Loading point with id ${dto.loadingPointId} not found`,
+          );
       }
 
       if (dto.processLineId) {
-        const processLine = await this.processLineRepo.findOne({ where: { id: dto.processLineId } });
-        if (!processLine) throw new NotFoundException(`Process line with id ${dto.processLineId} not found`);
+        const processLine = await this.processLineRepo.findOne({
+          where: { id: dto.processLineId },
+        });
+        if (!processLine)
+          throw new NotFoundException(
+            `Process line with id ${dto.processLineId} not found`,
+          );
       }
 
       if (dto.bom && Array.isArray(dto.bom) && dto.bom.length > 0) {
-        console.log('🔍 Validating BOM materials...', JSON.stringify(dto.bom, null, 2));
+        console.log(
+          '🔍 Validating BOM materials...',
+          JSON.stringify(dto.bom, null, 2),
+        );
         for (const item of dto.bom) {
           console.log('Checking material ID:', item.materialId);
-          const material = await this.materialRepo.findOne({ where: { id: item.materialId } });
-          if (!material) throw new NotFoundException(`Material with id ${item.materialId} not found`);
+          const material = await this.materialRepo.findOne({
+            where: { id: item.materialId },
+          });
+          if (!material)
+            throw new NotFoundException(
+              `Material with id ${item.materialId} not found`,
+            );
           console.log('✅ Material found:', material.matCode);
         }
       }
@@ -188,7 +293,7 @@ export class ProductsService {
         productCode: dto.productCode,
         productName: dto.productName,
         productTypeId: dto.productTypeId,
-        defaultLocationId: dto.defaultLocationId
+        defaultLocationId: dto.defaultLocationId,
       });
 
       const product = queryRunner.manager.create(Product, {
@@ -211,15 +316,17 @@ export class ProductsService {
         createBy: user,
         updateBy: user,
       });
-      
+
       console.log('💾 Saving product to database...');
       const saved = await queryRunner.manager.save(product);
       console.log('✅ Product saved with ID:', saved.id);
 
+      await this.productStockService.ensureStockRow(queryRunner.manager, saved.id);
+
       if (dto.bom && Array.isArray(dto.bom) && dto.bom.length > 0) {
         console.log('📋 Adding BOM items:', dto.bom.length);
         console.log('BOM data:', JSON.stringify(dto.bom, null, 2));
-        const boms = dto.bom.map(item => {
+        const boms = dto.bom.map((item) => {
           const bomItem = queryRunner.manager.create(ProductBom, {
             productId: saved.id,
             materialId: item.materialId,
@@ -270,29 +377,40 @@ export class ProductsService {
 
   async addBomItems(productId: number, items: CreateBomDto[], user: string) {
     const product = await this.findOne(productId);
-    
+
     // Check for existing materials in BOM
-    const existingMaterialIds = product.boms.map(bom => bom.materialId);
-    
+    const existingMaterialIds = product.boms.map((bom) => bom.materialId);
+
     // Check for duplicates in request items
-    const requestMaterialIds = items.map(item => item.materialId);
-    const duplicatesInRequest = requestMaterialIds.filter((id, index) => requestMaterialIds.indexOf(id) !== index);
+    const requestMaterialIds = items.map((item) => item.materialId);
+    const duplicatesInRequest = requestMaterialIds.filter(
+      (id, index) => requestMaterialIds.indexOf(id) !== index,
+    );
     if (duplicatesInRequest.length > 0) {
-      throw new ConflictException(`Duplicate materials in request: ${duplicatesInRequest.join(', ')}`);
+      throw new ConflictException(
+        `Duplicate materials in request: ${duplicatesInRequest.join(', ')}`,
+      );
     }
-    
+
     for (const item of items) {
       // Check if material already exists in BOM
       if (existingMaterialIds.includes(item.materialId)) {
-        throw new ConflictException(`Material with id ${item.materialId} already exists in product BOM`);
+        throw new ConflictException(
+          `Material with id ${item.materialId} already exists in product BOM`,
+        );
       }
-      
-      const material = await this.materialRepo.findOne({ where: { id: item.materialId } });
-      if (!material) throw new NotFoundException(`Material with id ${item.materialId} not found`);
+
+      const material = await this.materialRepo.findOne({
+        where: { id: item.materialId },
+      });
+      if (!material)
+        throw new NotFoundException(
+          `Material with id ${item.materialId} not found`,
+        );
     }
-    
+
     try {
-      const boms = items.map(item =>
+      const boms = items.map((item) =>
         this.bomRepo.create({
           productId: product.id,
           materialId: item.materialId,
@@ -316,23 +434,32 @@ export class ProductsService {
 
   async updateBom(productId: number, items: CreateBomDto[], user: string) {
     const product = await this.findOne(productId);
-    
+
     // Check for duplicates in request items
-    const requestMaterialIds = items.map(item => item.materialId);
-    const duplicatesInRequest = requestMaterialIds.filter((id, index) => requestMaterialIds.indexOf(id) !== index);
+    const requestMaterialIds = items.map((item) => item.materialId);
+    const duplicatesInRequest = requestMaterialIds.filter(
+      (id, index) => requestMaterialIds.indexOf(id) !== index,
+    );
     if (duplicatesInRequest.length > 0) {
-      throw new ConflictException(`Duplicate materials in request: ${duplicatesInRequest.join(', ')}`);
+      throw new ConflictException(
+        `Duplicate materials in request: ${duplicatesInRequest.join(', ')}`,
+      );
     }
-    
+
     for (const item of items) {
-      const material = await this.materialRepo.findOne({ where: { id: item.materialId } });
-      if (!material) throw new NotFoundException(`Material with id ${item.materialId} not found`);
+      const material = await this.materialRepo.findOne({
+        where: { id: item.materialId },
+      });
+      if (!material)
+        throw new NotFoundException(
+          `Material with id ${item.materialId} not found`,
+        );
     }
-    
+
     try {
       await this.bomRepo.delete({ productId });
-      
-      const boms = items.map(item =>
+
+      const boms = items.map((item) =>
         this.bomRepo.create({
           productId: product.id,
           materialId: item.materialId,
@@ -361,9 +488,79 @@ export class ProductsService {
     return { message: 'BOM item removed successfully' };
   }
 
+  async getProductionSteps(productId: number) {
+    await this.findOne(productId);
+    return this.productStepRepo.find({
+      where: { productId },
+      relations: ['process'],
+      order: { stepOrder: 'ASC' },
+    });
+  }
+
+  /**
+   * แทนที่ลำดับกระบวนการผลิตของสินค้าทั้งชุด (ต้องมี BOM อย่างน้อย 1 แถว ถ้ามีขั้นตอนมากกว่า 0)
+   */
+  async replaceProductionSteps(
+    productId: number,
+    steps: ProductProductionStepItemDto[],
+    user: string,
+  ) {
+    await this.findOne(productId);
+    const bomCount = await this.bomRepo.count({ where: { productId } });
+    if (steps.length > 0 && bomCount === 0) {
+      throw new BadRequestException(
+        'กรุณากำหนด BOM สำหรับสินค้านี้ก่อนตั้งลำดับกระบวนการผลิต',
+      );
+    }
+
+    return await this.dataSource.transaction(async (manager) => {
+      await manager.delete(ProductProductionStep, { productId });
+
+      for (let i = 0; i < steps.length; i++) {
+        const raw = steps[i];
+        const processCode = this.normalizeProcessCode(raw.processCode);
+        const processName =
+          raw.processName?.trim() || this.titleFromCode(processCode);
+
+        let process = await manager.findOne(ProductionProcess, {
+          where: { processCode },
+        });
+        if (!process) {
+          const row = await manager
+            .createQueryBuilder(ProductionProcess, 'p')
+            .select('COALESCE(MAX(p.sequenceOrder), 0)', 'max')
+            .getRawOne();
+          const seq = Number(row?.max ?? 0) + 1;
+          process = manager.create(ProductionProcess, {
+            processCode,
+            processName,
+            sequenceOrder: seq,
+            isActive: true,
+          });
+          process = await manager.save(process);
+        }
+
+        const link = manager.create(ProductProductionStep, {
+          productId,
+          stepOrder: i + 1,
+          processId: process.id,
+          createBy: user,
+          updateBy: user,
+        });
+        await manager.save(link);
+      }
+
+      return manager.find(ProductProductionStep, {
+        where: { productId },
+        relations: ['process'],
+        order: { stepOrder: 'ASC' },
+      });
+    });
+  }
+
   async calculateMaterialRequirements(productId: number, quantity: number) {
     const product = await this.findOne(productId);
-    return product.boms.map(bom => ({
+    return product.boms.map((bom) => ({
       materialId: bom.materialId,
       materialCode: bom.material.matCode,
       materialType: bom.material.materialsType.code,

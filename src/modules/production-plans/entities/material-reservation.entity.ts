@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { ProductionPlan } from './production-plan.entity';
 import { Material } from '../../materials/entities/material.entity';
 
@@ -13,7 +20,12 @@ export class MaterialReservation {
   @Column({ name: 'material_id' })
   materialId: number;
 
-  @Column({ name: 'reserved_quantity', type: 'decimal', precision: 15, scale: 4 })
+  @Column({
+    name: 'reserved_quantity',
+    type: 'decimal',
+    precision: 15,
+    scale: 4,
+  })
   reservedQuantity: number;
 
   @Column({ name: 'lot_number', length: 50, nullable: true })
@@ -25,7 +37,9 @@ export class MaterialReservation {
   @CreateDateColumn({ name: 'create_date' })
   createDate: Date;
 
-  @ManyToOne(() => ProductionPlan, plan => plan.reservations, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ProductionPlan, (plan) => plan.reservations, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'plan_id' })
   plan: ProductionPlan;
 

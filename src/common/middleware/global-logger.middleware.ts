@@ -19,7 +19,9 @@ export class GlobalLoggerMiddleware implements NestMiddleware {
     const logBody = this.sanitizeBody(body);
     const logHeaders = this.sanitizeHeaders(headers);
 
-    this.logger.log(`[${requestId}] ${method} ${originalUrl} - IP: ${clientIp} - User-Agent: ${userAgent}`);
+    this.logger.log(
+      `[${requestId}] ${method} ${originalUrl} - IP: ${clientIp} - User-Agent: ${userAgent}`,
+    );
     /* this.logger.debug(`[${requestId}] Query: ${JSON.stringify(query)}`);
     this.logger.debug(`[${requestId}] Params: ${JSON.stringify(params)}`);
     this.logger.debug(`[${requestId}] Body: ${JSON.stringify(logBody)}`);
@@ -29,52 +31,63 @@ export class GlobalLoggerMiddleware implements NestMiddleware {
     const originalSend = res.send;
     const originalJson = res.json;
 
-    res.send = function(data) {
+    res.send = function (data) {
       const duration = Date.now() - startTime;
       const logger = new Logger('HTTP');
-      
-      logger.log(`[${requestId}] ${method} ${originalUrl} - Status: ${res.statusCode} - Duration: ${duration}ms - Size: ${Buffer.byteLength(data || '', 'utf8')} bytes`);
-      
+
+      logger.log(
+        `[${requestId}] ${method} ${originalUrl} - Status: ${res.statusCode} - Duration: ${duration}ms - Size: ${Buffer.byteLength(data || '', 'utf8')} bytes`,
+      );
+
       if (res.statusCode >= 400) {
         logger.warn(`[${requestId}] Error Response: ${data}`);
       }
-      
+
       return originalSend.call(this, data);
     };
 
-    res.json = function(data) {
+    res.json = function (data) {
       const duration = Date.now() - startTime;
       const logger = new Logger('HTTP');
-      
+
       const responseSize = Buffer.byteLength(JSON.stringify(data), 'utf8');
-      logger.log(`[${requestId}] ${method} ${originalUrl} - Status: ${res.statusCode} - Duration: ${duration}ms - Size: ${responseSize} bytes`);
-      
+      logger.log(
+        `[${requestId}] ${method} ${originalUrl} - Status: ${res.statusCode} - Duration: ${duration}ms - Size: ${responseSize} bytes`,
+      );
+
       if (res.statusCode >= 400) {
         logger.warn(`[${requestId}] Error Response: ${JSON.stringify(data)}`);
       } else {
         logger.debug(`[${requestId}] Response: ${JSON.stringify(data)}`);
       }
-      
+
       return originalJson.call(this, data);
     };
 
     // Handle response finish event
     res.on('finish', () => {
       const duration = Date.now() - startTime;
-      this.logger.log(`[${requestId}] Request completed - Duration: ${duration}ms - Status: ${res.statusCode}`);
+      this.logger.log(
+        `[${requestId}] Request completed - Duration: ${duration}ms - Status: ${res.statusCode}`,
+      );
     });
 
     // Handle errors
     res.on('error', (error) => {
       const duration = Date.now() - startTime;
-      this.logger.error(`[${requestId}] Request error - Duration: ${duration}ms - Error: ${error.message}`);
+      this.logger.error(
+        `[${requestId}] Request error - Duration: ${duration}ms - Error: ${error.message}`,
+      );
     });
 
     next();
   }
 
   private generateRequestId(): string {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    return (
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15)
+    );
   }
 
   private sanitizeBody(body: any): any {
@@ -83,8 +96,15 @@ export class GlobalLoggerMiddleware implements NestMiddleware {
     }
 
     const sanitized = { ...body };
-    const sensitiveFields = ['password', 'passwordHash', 'token', 'secret', 'apiKey', 'authorization'];
-    
+    const sensitiveFields = [
+      'password',
+      'passwordHash',
+      'token',
+      'secret',
+      'apiKey',
+      'authorization',
+    ];
+
     for (const field of sensitiveFields) {
       if (sanitized[field]) {
         sanitized[field] = '***HIDDEN***';
@@ -96,8 +116,13 @@ export class GlobalLoggerMiddleware implements NestMiddleware {
 
   private sanitizeHeaders(headers: any): any {
     const sanitized = { ...headers };
-    const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key', 'x-auth-token'];
-    
+    const sensitiveHeaders = [
+      'authorization',
+      'cookie',
+      'x-api-key',
+      'x-auth-token',
+    ];
+
     for (const header of sensitiveHeaders) {
       if (sanitized[header]) {
         sanitized[header] = '***HIDDEN***';
@@ -105,9 +130,16 @@ export class GlobalLoggerMiddleware implements NestMiddleware {
     }
 
     // Only keep important headers for logging
-    const importantHeaders = ['content-type', 'accept', 'user-agent', 'origin', 'referer', 'host'];
+    const importantHeaders = [
+      'content-type',
+      'accept',
+      'user-agent',
+      'origin',
+      'referer',
+      'host',
+    ];
     const filtered: any = {};
-    
+
     for (const header of importantHeaders) {
       if (sanitized[header]) {
         filtered[header] = sanitized[header];

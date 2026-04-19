@@ -18,7 +18,7 @@ export enum AuthAction {
   PASSWORD_RESET = 'PASSWORD_RESET',
 }
 
-@Entity('auth_logs')
+@Entity({ schema: 'logs', name: 'auth_logs' })
 @Index(['action'])
 @Index(['username'])
 @Index(['clientIp'])
