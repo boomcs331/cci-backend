@@ -17,6 +17,7 @@ import {
 } from './dto';
 import { DepartmentScope } from '../auth/decorators/department-scope.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { PermissionMatch } from '../auth/decorators/require-permissions.decorator';
 
 @Controller('production-orders')
 @DepartmentScope({ source: 'headers', key: 'x-department-id' })
@@ -36,9 +37,18 @@ export class ProductionOrdersController {
     return this.service.findAllOrders(+page, +limit);
   }
 
+  /** Dept dashboard: lots currently IN_PROGRESS for the user's department */
+  @Get('in-progress/my-dept')
+  @PermissionMatch('any')
+  @RequirePermissions('production_orders.read', 'production_orders.update')
+  getMyDeptInProgress(@Headers('x-user-id') userId?: string) {
+    return this.service.getInProgressLotsForMyDept(userId);
+  }
+
   /** QR station: next step, department gates, flags for start/complete */
   @Get('lots/:qrCode/station')
-  @RequirePermissions('production_orders.read')
+  @PermissionMatch('any')
+  @RequirePermissions('production_orders.read', 'production_orders.update')
   getLotStation(
     @Param('qrCode') qrCode: string,
     @Headers('x-user-id') userId?: string,
@@ -46,8 +56,19 @@ export class ProductionOrdersController {
     return this.service.getLotStation(qrCode, userId);
   }
 
+  @Get('lots/:qrCode/tracking')
+  @PermissionMatch('any')
+  @RequirePermissions('production_orders.read', 'production_orders.update')
+  getLotTracking(
+    @Param('qrCode') qrCode: string,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    return this.service.getLotTracking(qrCode, userId);
+  }
+
   @Get('lots/:qrCode/status')
-  @RequirePermissions('production_orders.read')
+  @PermissionMatch('any')
+  @RequirePermissions('production_orders.read', 'production_orders.update')
   getLotStatus(
     @Param('qrCode') qrCode: string,
     @Headers('x-user-id') userId?: string,

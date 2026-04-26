@@ -629,8 +629,9 @@ export class ProductionOrdersService {
   }
 
   async getLotStation(qrCode: string, userId?: string) {
+    const code = this.normalizeLotLookupCode(qrCode);
     const lot = await this.lotRepo.findOne({
-      where: { qrCode },
+      where: [{ qrCode: code }, { lotNo: code }],
       relations: [
         'order',
         'order.product',
@@ -643,7 +644,7 @@ export class ProductionOrdersService {
       await this.qrScanLogService.logEvent({
         domain: QrScanDomain.PRODUCTION,
         action: QrScanAction.PRODUCTION_STATION_LOOKUP,
-        qrCode,
+        qrCode: code,
         userId: userId ?? null,
         isSuccess: false,
         errorMessage: 'QR Code not found',
@@ -655,7 +656,7 @@ export class ProductionOrdersService {
     await this.qrScanLogService.logEvent({
       domain: QrScanDomain.PRODUCTION,
       action: QrScanAction.PRODUCTION_STATION_LOOKUP,
-      qrCode,
+      qrCode: code,
       userId: userId ?? null,
       isSuccess: true,
       metadata: {
@@ -667,9 +668,137 @@ export class ProductionOrdersService {
     return station;
   }
 
-  async getLotStatus(qrCode: string, userId?: string) {
+  async getLotTracking(qrCode: string, userId?: string) {
+    const code = this.normalizeLotLookupCode(qrCode);
     const lot = await this.lotRepo.findOne({
-      where: { qrCode },
+      where: [{ qrCode: code }, { lotNo: code }],
+      relations: [
+        'tracking',
+        'tracking.process',
+      ],
+      order: {
+        tracking: {
+          startTime: 'ASC',
+        },
+      },
+    });
+    if (!lot) {
+      await this.qrScanLogService.logEvent({
+        domain: QrScanDomain.PRODUCTION,
+        action: QrScanAction.PRODUCTION_STATUS_LOOKUP,
+        qrCode: code,
+        userId: userId ?? null,
+        isSuccess: false,
+        errorMessage: 'QR Code not found',
+      });
+      throw new NotFoundException('QR Code not found');
+    }
+
+    return (lot.tracking ?? []).map((t) => ({
+      status: t.status,
+      processCode: t.process?.processCode ?? null,
+      processName: t.process?.processName ?? null,
+      startTime: t.startTime ?? null,
+      endTime: t.endTime ?? null,
+      operator: t.operator ?? null,
+      remarks: t.remarks ?? null,
+    }));
+  }
+
+  async getInProgressLotsForMyDept(userId?: string) {
+    const user = userId ? await this.authUserService.findUserById(userId) : null;
+    const isGlobal = this.userIsAdminGlobal(user);
+
+    const deptId = user?.department?.id ? String(user.department.id) : undefined;
+    const deptCode = user?.department?.code ?? null;
+
+    // For non-admin, we gate visibility by permissions:
+    // - IN_PROGRESS list is part of the QR station workflow, so users must have either read or update.
+    const canRead = userId
+      ? await this.authUserService.hasPermission(
+          String(userId),
+          'production_orders.read',
+          deptId,
+        )
+      : false;
+    const canUpdate = userId
+      ? await this.authUserService.hasPermission(
+          String(userId),
+          'production_orders.update',
+          deptId,
+        )
+      : false;
+
+    if (!isGlobal && !canRead && !canUpdate) {
+      return [];
+    }
+
+    // Use production_lots as the source of truth.
+    // Admin: show lots for *all statuses*.
+    // Non-admin: show only lots that are IN_PROGRESS, and match department gates (allowedDepartmentCodes) for the current step.
+    const qb = this.lotRepo
+      .createQueryBuilder('lot')
+      .innerJoin('lot.order', 'order')
+      .innerJoin('order.product', 'product')
+      .leftJoin('lot.currentProcess', 'process')
+      .select([
+        // Quote aliases so Postgres preserves camelCase in raw results.
+        'lot.lotNo AS "lotNo"',
+        'lot.qrCode AS "qrCode"',
+        'lot.quantity AS "quantity"',
+        'lot.status AS "status"',
+        'order.orderNo AS "orderNo"',
+        'product.productCode AS "productCode"',
+        'product.productName AS "productName"',
+        'process.processCode AS "currentProcessCode"',
+        'process.processName AS "currentProcessName"',
+        'process.allowedDepartmentCodes AS "allowedDepartmentCodes"',
+      ])
+      .orderBy('lot.createDate', 'DESC');
+
+    if (!isGlobal) {
+      qb.where('lot.status = :status', { status: 'IN_PROGRESS' });
+      // If user has no department, they can't be matched to department-gated processes.
+      if (!deptCode) {
+        return [];
+      }
+      qb.andWhere(
+        '(process.id IS NULL OR process.allowedDepartmentCodes IS NULL OR :deptCode = ANY(process.allowedDepartmentCodes))',
+        { deptCode },
+      );
+    }
+
+    const rows = (await qb.getRawMany()) as Array<{
+      lotNo: string;
+      qrCode: string;
+      quantity: number;
+      status: string;
+      orderNo: string;
+      productCode: string;
+      productName: string;
+      currentProcessCode: string | null;
+      currentProcessName: string | null;
+      allowedDepartmentCodes: string[] | null;
+    }>;
+
+    return rows.map((r) => ({
+      lotNo: r.lotNo,
+      qrCode: r.qrCode,
+      quantity: Number(r.quantity),
+      status: r.status,
+      orderNo: r.orderNo,
+      productCode: r.productCode,
+      productName: r.productName,
+      currentProcessCode: r.currentProcessCode,
+      currentProcessName: r.currentProcessName,
+      allowedDepartmentCodes: r.allowedDepartmentCodes ?? null,
+    }));
+  }
+
+  async getLotStatus(qrCode: string, userId?: string) {
+    const code = this.normalizeLotLookupCode(qrCode);
+    const lot = await this.lotRepo.findOne({
+      where: [{ qrCode: code }, { lotNo: code }],
       relations: [
         'order',
         'order.product',
@@ -682,7 +811,7 @@ export class ProductionOrdersService {
       await this.qrScanLogService.logEvent({
         domain: QrScanDomain.PRODUCTION,
         action: QrScanAction.PRODUCTION_STATUS_LOOKUP,
-        qrCode,
+        qrCode: code,
         userId: userId ?? null,
         isSuccess: false,
         errorMessage: 'QR Code not found',
@@ -729,7 +858,7 @@ export class ProductionOrdersService {
     await this.qrScanLogService.logEvent({
       domain: QrScanDomain.PRODUCTION,
       action: QrScanAction.PRODUCTION_STATUS_LOOKUP,
-      qrCode,
+      qrCode: code,
       userId: userId ?? null,
       isSuccess: true,
       metadata: {
@@ -739,6 +868,15 @@ export class ProductionOrdersService {
     });
 
     return payload;
+  }
+
+  private normalizeLotLookupCode(input: string): string {
+    const raw = (input ?? '').trim();
+    if (!raw) return raw;
+    // Some scanners may send full URLs or include query strings.
+    const noQuery = raw.split('?')[0] ?? raw;
+    const parts = noQuery.split('/').filter(Boolean);
+    return (parts[parts.length - 1] ?? noQuery).trim();
   }
 
   async createProcess(dto: CreateProcessDto) {
