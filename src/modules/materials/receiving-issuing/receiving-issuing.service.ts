@@ -1606,6 +1606,10 @@ export class ReceivingIssuingService {
 
     for (const txn of transactions) {
       const qty = Number(txn.quantity);
+      const txnType = (txn.transactionType || '').toUpperCase();
+      const isIssue = txnType === 'ISSUE' || qty < 0;
+      const isReceive = !isIssue && (txnType === 'RECEIVE' || qty > 0);
+
       const recv = txn.lot?.receiving;
       const receivingNoRaw = (recv?.receivingNo ?? '').trim();
       const receivingNo = receivingNoRaw || null;
@@ -1615,16 +1619,21 @@ export class ReceivingIssuingService {
       );
       const displayReceivingDate = receivingDateYmd || txnDay;
 
-      if (qty > 0) {
-        const key = receivingNo
-          ? `${txn.materialId}|${receivingNo}|IN_AGG`
-          : `${txn.materialId}|__NO_RCV__|IN:${txnDay}`;
+      /** ให้ IN/OUT ใช้คีย์เดียวกันแม้ไม่มีเลขที่ใบรับใน lot (ใช้ receiving id) */
+      const recvKey =
+        receivingNo ||
+        (recv?.id != null ? `#rcv:${recv.id}` : null) ||
+        (txn.lot?.receivingId != null ? `#rcv:${txn.lot.receivingId}` : null) ||
+        `__NO_RCV__|${txnDay}`;
+
+      if (isReceive) {
+        const key = `${txn.materialId}|${recvKey}|IN_AGG`;
         if (!grouped[key]) {
           grouped[key] = {
             materialId: txn.materialId,
             materialCode: txn.material?.matCode,
             materialName: txn.material?.matName,
-            receivingNo: receivingNo ?? '-',
+            receivingNo: receivingNo ?? (recv?.id != null ? `#rcv:${recv.id}` : '-'),
             receivingDate: displayReceivingDate,
             issueDate: null,
             issueAt: null,
@@ -1638,32 +1647,79 @@ export class ReceivingIssuingService {
             balance: 0,
           };
         }
-        grouped[key].received += qty;
-      } else {
-        const key = receivingNo
-          ? `${txn.materialId}|${receivingNo}|OUT|${txn.id}`
-          : `${txn.materialId}|__NO_RCV__|OUT|${txn.id}`;
-        grouped[key] = {
-          materialId: txn.materialId,
-          materialCode: txn.material?.matCode,
-          materialName: txn.material?.matName,
-          receivingNo: receivingNo ?? '-',
-          receivingDate: displayReceivingDate,
-          issueDate: txnDay,
-          issueAt: txn.transactionDate,
-          transactionId: txn.id,
-          transactionNo: txn.transactionNo,
-          referenceNo: txn.referenceNo,
-          transactionType: txn.transactionType,
-          lotNo: txn.lot?.lotNo ?? null,
-          received: 0,
-          issued: Math.abs(qty),
-          balance: 0,
-        };
+        grouped[key].received += Math.abs(qty);
+      } else if (isIssue) {
+        /**
+         * รวมจ่ายออกทุกครั้งภายใต้ใบรับเดียวกันเป็นแถวเดียว
+         * (กรณีแบ่งหลาย material_receiving_lots จากใบรับเดียว — แต่ละ lot id ต่างกัน
+         * แต่ผู้ใช้ต้องการยอดรวม เช่น จ่าย 100 × 20 lot = 2000 ในใบรับเดียว)
+         */
+        const key = `${txn.materialId}|${recvKey}|OUT_ALL`;
+        const issueQty = Math.abs(qty);
+        if (!grouped[key]) {
+          grouped[key] = {
+            materialId: txn.materialId,
+            materialCode: txn.material?.matCode,
+            materialName: txn.material?.matName,
+            receivingNo: receivingNo ?? (recv?.id != null ? `#rcv:${recv.id}` : '-'),
+            receivingDate: displayReceivingDate,
+            issueDate: txnDay,
+            issueAt: txn.transactionDate,
+            transactionId: null,
+            transactionNo: null,
+            referenceNo: null,
+            transactionType: txn.transactionType,
+            lotNo: null,
+            lotNos: [] as string[],
+            received: 0,
+            issued: 0,
+            balance: 0,
+          };
+        }
+        grouped[key].issued += issueQty;
+        if (txn.lot?.lotNo) {
+          const ln = String(txn.lot.lotNo);
+          const arr = grouped[key].lotNos as string[];
+          if (!arr.includes(ln)) arr.push(ln);
+        }
+        if (
+          grouped[key].transactionType != null &&
+          txn.transactionType != null &&
+          grouped[key].transactionType !== txn.transactionType
+        ) {
+          grouped[key].transactionType = null;
+        }
+        const prevDay = String(grouped[key].issueDate || '');
+        if (txnDay > prevDay) {
+          grouped[key].issueDate = txnDay;
+          grouped[key].issueAt = txn.transactionDate;
+        } else if (txnDay === prevDay) {
+          const prevAt = grouped[key].issueAt
+            ? new Date(grouped[key].issueAt).getTime()
+            : 0;
+          const curAt = txn.transactionDate
+            ? new Date(txn.transactionDate).getTime()
+            : 0;
+          if (curAt > prevAt) grouped[key].issueAt = txn.transactionDate;
+        }
       }
     }
 
     const rows = Object.values(grouped) as any[];
+
+    for (const r of rows) {
+      if (Array.isArray(r.lotNos)) {
+        const arr = [...r.lotNos].sort((a: string, b: string) =>
+          a.localeCompare(b, undefined, { numeric: true }),
+        );
+        r.lotNo =
+          arr.length === 0 ? null : arr.length === 1 ? arr[0] : arr.join(', ');
+        delete r.lotNos;
+      }
+    }
+
+    const isRecvSummaryRow = (r: any) =>
+      r.transactionId == null && Number(r.received || 0) > 0;
 
     const reportRowComparator = (a: any, b: any) => {
       const na = String(a.receivingNo || '');
@@ -1672,10 +1728,14 @@ export class ReceivingIssuingService {
       const da = (a.receivingDate as string) || '';
       const db = (b.receivingDate as string) || '';
       if (da !== db) return da.localeCompare(db);
-      const aIsRecv = a.transactionId == null;
-      const bIsRecv = b.transactionId == null;
+      const aIsRecv = isRecvSummaryRow(a);
+      const bIsRecv = isRecvSummaryRow(b);
       if (aIsRecv !== bIsRecv) return aIsRecv ? -1 : 1;
       if (aIsRecv) return 0;
+      const la = String(a.lotNo ?? '');
+      const lb = String(b.lotNo ?? '');
+      if (la !== lb)
+        return la.localeCompare(lb, undefined, { numeric: true });
       const ia = (a.issueDate as string) || '';
       const ib = (b.issueDate as string) || '';
       if (ia !== ib) return ia.localeCompare(ib);
@@ -1697,10 +1757,14 @@ export class ReceivingIssuingService {
 
     for (const [, bucketRows] of byBucket) {
       bucketRows.sort((a, b) => {
-        const aIsRecv = a.transactionId == null;
-        const bIsRecv = b.transactionId == null;
+        const aIsRecv = isRecvSummaryRow(a);
+        const bIsRecv = isRecvSummaryRow(b);
         if (aIsRecv !== bIsRecv) return aIsRecv ? -1 : 1;
         if (aIsRecv) return 0;
+        const la = String(a.lotNo ?? '');
+        const lb = String(b.lotNo ?? '');
+        if (la !== lb)
+          return la.localeCompare(lb, undefined, { numeric: true });
         const ta = a.issueAt ? new Date(a.issueAt).getTime() : 0;
         const tb = b.issueAt ? new Date(b.issueAt).getTime() : 0;
         if (ta !== tb) return ta - tb;
