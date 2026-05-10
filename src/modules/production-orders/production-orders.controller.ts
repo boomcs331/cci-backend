@@ -14,6 +14,7 @@ import {
   StartProcessDto,
   CompleteProcessDto,
   CreateProcessDto,
+  SplitLotDto,
 } from './dto';
 import { DepartmentScope } from '../auth/decorators/department-scope.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
@@ -66,6 +67,16 @@ export class ProductionOrdersController {
     return this.service.getLotTracking(qrCode, userId);
   }
 
+  @Get('lots/:qrCode/lineage')
+  @PermissionMatch('any')
+  @RequirePermissions('production_orders.read', 'production_orders.update')
+  getLotLineage(
+    @Param('qrCode') qrCode: string,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    return this.service.getLotLineage(qrCode, userId);
+  }
+
   @Get('lots/:qrCode/status')
   @PermissionMatch('any')
   @RequirePermissions('production_orders.read', 'production_orders.update')
@@ -94,6 +105,16 @@ export class ProductionOrdersController {
     @Headers('x-user-id') userId?: string,
   ) {
     return this.service.completeLotProcess(qrCode, dto, userId);
+  }
+
+  @Post('lots/:qrCode/split')
+  @RequirePermissions('production_orders.update')
+  splitLot(
+    @Param('qrCode') qrCode: string,
+    @Body() dto: SplitLotDto,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    return this.service.splitLot(qrCode, dto, userId);
   }
 
   @Post('processes')

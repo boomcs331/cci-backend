@@ -24,6 +24,7 @@ import {
 } from '../entities';
 import { Product } from '../../products/entities/product.entity';
 import { ProductBom } from '../../products/entities/product-bom.entity';
+import { ProductionOrder } from '../../production-orders/entities/production-order.entity';
 import {
   CreateReceivingDto,
   CreateIssuingDto,
@@ -73,6 +74,8 @@ export class ReceivingIssuingService {
     private productRepo: Repository<Product>,
     @InjectRepository(ProductBom)
     private bomRepo: Repository<ProductBom>,
+    @InjectRepository(ProductionOrder)
+    private productionOrderRepository: Repository<ProductionOrder>,
     private dataSource: DataSource,
     private readonly qrScanLogService: QrScanLogService,
   ) {}
@@ -1335,6 +1338,242 @@ export class ReceivingIssuingService {
     return stock;
   }
 
+  private packIssuingTraceback(issuing: MaterialIssuing) {
+    const mat = issuing.material;
+    const it = issuing.issuingTypeMaster;
+
+    const lines = (issuing.lots ?? []).map((il) => {
+      const rl = il.lot;
+      const recv = rl?.receiving;
+      const sup = recv?.supplier;
+      const lm = rl?.material;
+      return {
+        issuingLotId: il.id,
+        quantity: Number(il.quantity),
+        unit: il.unit,
+        lineQrCode: il.qrCode,
+        lot: rl
+          ? {
+              id: rl.id,
+              lotNo: rl.lotNo,
+              qrCode: rl.qrCode,
+              quantity: Number(rl.quantity),
+              remainingQuantity: Number(rl.remainingQuantity),
+              unit: rl.unit,
+              status: rl.status,
+              materialId: rl.materialId,
+              materialCode: lm?.matCode ?? null,
+              materialName: lm?.matName ?? null,
+            }
+          : null,
+        receiving: recv
+          ? {
+              id: recv.id,
+              receivingNo: recv.receivingNo,
+              receivingDate: recv.receivingDate,
+              poNo: recv.poNo,
+              remark: recv.remark,
+              supplier: sup
+                ? {
+                    id: sup.id,
+                    code: sup.code,
+                    name: sup.name,
+                  }
+                : null,
+            }
+          : null,
+      };
+    });
+
+    return {
+      issuing: {
+        id: issuing.id,
+        issuingNo: issuing.issuingNo,
+        issuingDate: issuing.issuingDate,
+        workOrderNo: issuing.workOrderNo,
+        machineNo: issuing.machineNo,
+        partNo: issuing.partNo,
+        department: issuing.department,
+        productionOrderId: issuing.productionOrderId,
+        remark: issuing.remark,
+        issuingType: issuing.issuingType,
+        totalQuantity: Number(issuing.totalQuantity),
+        unit: issuing.unit,
+        status: issuing.status,
+        materialId: issuing.materialId,
+        materialCode: mat?.matCode ?? null,
+        materialName: mat?.matName ?? null,
+        issuingTypeName: it?.name ?? null,
+      },
+      lines,
+    };
+  }
+
+  async getTraceabilityByLot(lotNo?: string, qrCode?: string) {
+    const ln = lotNo?.trim();
+    const qr = qrCode?.trim();
+    if (!ln && !qr) {
+      throw new BadRequestException('lot_no or qr_code is required');
+    }
+    const where = ln ? { lotNo: ln } : { qrCode: qr! };
+    const lot = await this.receivingLotRepository.findOne({
+      where,
+      relations: [
+        'receiving',
+        'receiving.supplier',
+        'receiving.material',
+        'material',
+      ],
+    });
+    if (!lot) {
+      throw new NotFoundException('Receiving lot not found');
+    }
+
+    const issuingLots = await this.issuingLotRepository.find({
+      where: { lotId: lot.id },
+      relations: ['issuing', 'issuing.material', 'issuing.issuingTypeMaster'],
+      order: { id: 'DESC' },
+    });
+
+    const recv = lot.receiving;
+    const sup = recv?.supplier;
+
+    return {
+      direction: 'forward' as const,
+      lot: {
+        id: lot.id,
+        lotNo: lot.lotNo,
+        qrCode: lot.qrCode,
+        quantity: Number(lot.quantity),
+        remainingQuantity: Number(lot.remainingQuantity),
+        unit: lot.unit,
+        status: lot.status,
+        materialId: lot.materialId,
+        materialCode: lot.material?.matCode ?? null,
+        materialName: lot.material?.matName ?? null,
+      },
+      receiving: recv
+        ? {
+            id: recv.id,
+            receivingNo: recv.receivingNo,
+            receivingDate: recv.receivingDate,
+            poNo: recv.poNo,
+            remark: recv.remark,
+            materialId: recv.materialId,
+            materialCode: recv.material?.matCode ?? null,
+            materialName: recv.material?.matName ?? null,
+            supplier: sup
+              ? {
+                  id: sup.id,
+                  code: sup.code,
+                  name: sup.name,
+                }
+              : null,
+          }
+        : null,
+      usages: issuingLots.map((il) => {
+        const iss = il.issuing;
+        const mat = iss?.material;
+        const it = iss?.issuingTypeMaster;
+        return {
+          issuingLotId: il.id,
+          quantity: Number(il.quantity),
+          unit: il.unit,
+          qrCode: il.qrCode,
+          issuing: iss
+            ? {
+                id: iss.id,
+                issuingNo: iss.issuingNo,
+                issuingDate: iss.issuingDate,
+                workOrderNo: iss.workOrderNo,
+                machineNo: iss.machineNo,
+                partNo: iss.partNo,
+                department: iss.department,
+                productionOrderId: iss.productionOrderId,
+                remark: iss.remark,
+                issuingType: iss.issuingType,
+                materialId: iss.materialId,
+                materialCode: mat?.matCode ?? null,
+                materialName: mat?.matName ?? null,
+                issuingTypeName: it?.name ?? null,
+              }
+            : null,
+        };
+      }),
+    };
+  }
+
+  async getTraceabilityByIssuing(issuingNo: string) {
+    const no = issuingNo?.trim();
+    if (!no) {
+      throw new BadRequestException('issuing_no is required');
+    }
+    const issuing = await this.issuingRepository.findOne({
+      where: { issuingNo: no },
+      relations: [
+        'material',
+        'issuingTypeMaster',
+        'lots',
+        'lots.lot',
+        'lots.lot.receiving',
+        'lots.lot.receiving.supplier',
+        'lots.lot.material',
+      ],
+    });
+    if (!issuing) {
+      throw new NotFoundException('Material issuing not found');
+    }
+
+    return {
+      direction: 'backward' as const,
+      ...this.packIssuingTraceback(issuing),
+    };
+  }
+
+  async getTraceabilityByProductionOrder(orderNo?: string, id?: number) {
+    const on = orderNo?.trim();
+    const idNum = id != null && !Number.isNaN(Number(id)) ? Number(id) : undefined;
+    if (!on && idNum == null) {
+      throw new BadRequestException('order_no or id is required');
+    }
+    const where = on ? { orderNo: on } : { id: idNum! };
+    const order = await this.productionOrderRepository.findOne({
+      where,
+      relations: ['product'],
+    });
+    if (!order) {
+      throw new NotFoundException('Production order not found');
+    }
+
+    const issuings = await this.issuingRepository.find({
+      where: { productionOrderId: order.id },
+      relations: [
+        'material',
+        'issuingTypeMaster',
+        'lots',
+        'lots.lot',
+        'lots.lot.receiving',
+        'lots.lot.receiving.supplier',
+        'lots.lot.material',
+      ],
+      order: { issuingDate: 'ASC', id: 'ASC' },
+    });
+
+    return {
+      direction: 'production-order' as const,
+      productionOrder: {
+        id: order.id,
+        orderNo: order.orderNo,
+        status: order.status,
+        orderQuantity: Number(order.orderQuantity),
+        productId: order.productId,
+        productCode: order.product?.productCode ?? null,
+        productName: order.product?.productName ?? null,
+      },
+      issuings: issuings.map((i) => this.packIssuingTraceback(i)),
+    };
+  }
+
   async getTransactionReport(
     startDate?: string,
     endDate?: string,
@@ -1344,6 +1583,7 @@ export class ReceivingIssuingService {
       .createQueryBuilder('txn')
       .leftJoinAndSelect('txn.material', 'material')
       .leftJoinAndSelect('txn.lot', 'lot')
+      .leftJoinAndSelect('lot.receiving', 'receiving')
       .orderBy('txn.transactionDate', 'ASC');
 
     if (startDate)
@@ -1354,34 +1594,133 @@ export class ReceivingIssuingService {
 
     const transactions = await query.getMany();
 
-    const grouped = transactions.reduce((acc: any, txn) => {
-      const date = new Date(txn.transactionDate).toISOString().split('T')[0];
-      const key = `${txn.materialId}-${date}`;
-      const qty = Number(txn.quantity);
+    /** วันที่ปฏิทินใน Asia/Bangkok (ไม่ใช่ UTC จาก toISOString — กันเลื่อนวัน) */
+    const toYmdBangkok = (d: Date | string | undefined | null): string => {
+      if (!d) return '';
+      const x = d instanceof Date ? d : new Date(d);
+      if (Number.isNaN(x.getTime())) return '';
+      return x.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    };
 
-      if (!acc[key]) {
-        acc[key] = {
+    const grouped: Record<string, any> = {};
+
+    for (const txn of transactions) {
+      const qty = Number(txn.quantity);
+      const recv = txn.lot?.receiving;
+      const receivingNoRaw = (recv?.receivingNo ?? '').trim();
+      const receivingNo = receivingNoRaw || null;
+      const txnDay = toYmdBangkok(txn.transactionDate);
+      const receivingDateYmd = toYmdBangkok(
+        recv?.receivingDate ?? txn.lot?.createDate ?? null,
+      );
+      const displayReceivingDate = receivingDateYmd || txnDay;
+
+      if (qty > 0) {
+        const key = receivingNo
+          ? `${txn.materialId}|${receivingNo}|IN_AGG`
+          : `${txn.materialId}|__NO_RCV__|IN:${txnDay}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            materialId: txn.materialId,
+            materialCode: txn.material?.matCode,
+            materialName: txn.material?.matName,
+            receivingNo: receivingNo ?? '-',
+            receivingDate: displayReceivingDate,
+            issueDate: null,
+            issueAt: null,
+            transactionId: null,
+            transactionNo: null,
+            referenceNo: null,
+            transactionType: null,
+            lotNo: null,
+            received: 0,
+            issued: 0,
+            balance: 0,
+          };
+        }
+        grouped[key].received += qty;
+      } else {
+        const key = receivingNo
+          ? `${txn.materialId}|${receivingNo}|OUT|${txn.id}`
+          : `${txn.materialId}|__NO_RCV__|OUT|${txn.id}`;
+        grouped[key] = {
           materialId: txn.materialId,
           materialCode: txn.material?.matCode,
           materialName: txn.material?.matName,
-          transactionDate: date,
+          receivingNo: receivingNo ?? '-',
+          receivingDate: displayReceivingDate,
+          issueDate: txnDay,
+          issueAt: txn.transactionDate,
+          transactionId: txn.id,
+          transactionNo: txn.transactionNo,
+          referenceNo: txn.referenceNo,
+          transactionType: txn.transactionType,
+          lotNo: txn.lot?.lotNo ?? null,
           received: 0,
-          issued: 0,
+          issued: Math.abs(qty),
           balance: 0,
         };
       }
+    }
 
-      if (qty > 0) {
-        acc[key].received += qty;
-      } else {
-        acc[key].issued += Math.abs(qty);
+    const rows = Object.values(grouped) as any[];
+
+    const reportRowComparator = (a: any, b: any) => {
+      const na = String(a.receivingNo || '');
+      const nb = String(b.receivingNo || '');
+      if (na !== nb) return na.localeCompare(nb, undefined, { numeric: true });
+      const da = (a.receivingDate as string) || '';
+      const db = (b.receivingDate as string) || '';
+      if (da !== db) return da.localeCompare(db);
+      const aIsRecv = a.transactionId == null;
+      const bIsRecv = b.transactionId == null;
+      if (aIsRecv !== bIsRecv) return aIsRecv ? -1 : 1;
+      if (aIsRecv) return 0;
+      const ia = (a.issueDate as string) || '';
+      const ib = (b.issueDate as string) || '';
+      if (ia !== ib) return ia.localeCompare(ib);
+      const ta = a.issueAt ? new Date(a.issueAt).getTime() : 0;
+      const tb = b.issueAt ? new Date(b.issueAt).getTime() : 0;
+      if (ta !== tb) return ta - tb;
+      return (a.transactionId || 0) - (b.transactionId || 0);
+    };
+
+    rows.sort(reportRowComparator);
+
+    const bucketKey = (r: any) => `${r.materialId}|${r.receivingNo}`;
+    const byBucket = new Map<string, any[]>();
+    for (const row of rows) {
+      const k = bucketKey(row);
+      if (!byBucket.has(k)) byBucket.set(k, []);
+      byBucket.get(k)!.push(row);
+    }
+
+    for (const [, bucketRows] of byBucket) {
+      bucketRows.sort((a, b) => {
+        const aIsRecv = a.transactionId == null;
+        const bIsRecv = b.transactionId == null;
+        if (aIsRecv !== bIsRecv) return aIsRecv ? -1 : 1;
+        if (aIsRecv) return 0;
+        const ta = a.issueAt ? new Date(a.issueAt).getTime() : 0;
+        const tb = b.issueAt ? new Date(b.issueAt).getTime() : 0;
+        if (ta !== tb) return ta - tb;
+        return (a.transactionId || 0) - (b.transactionId || 0);
+      });
+      let running = 0;
+      for (const r of bucketRows) {
+        running +=
+          Number(r.received || 0) - Number(r.issued || 0);
+        r.balance = running;
       }
-      acc[key].balance = acc[key].received - acc[key].issued;
+    }
 
-      return acc;
-    }, {});
+    rows.sort(reportRowComparator);
 
-    return Object.values(grouped);
+    for (const r of rows) {
+      delete r.issueAt;
+    }
+
+    return rows;
   }
 
   async createIssuingFromMaterialBom(dto: any, user: string) {

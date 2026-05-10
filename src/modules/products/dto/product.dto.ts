@@ -20,10 +20,22 @@ export class CreateProductDto {
   description?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   productTypeId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   defaultLocationId?: number;
 
@@ -32,26 +44,62 @@ export class CreateProductDto {
   lr?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isNaN(n) ? undefined : n;
+  })
   @IsNumber()
   lotSize?: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isNaN(n) ? undefined : n;
+  })
   @IsNumber()
   minStock?: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   customerId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   modelId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   deliveryTypeId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   unitId?: number;
 
@@ -60,10 +108,22 @@ export class CreateProductDto {
   scale?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   loadingPointId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const n =
+      typeof value === 'number' ? Math.trunc(value) : parseInt(String(value), 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })
   @IsNumber()
   processLineId?: number;
 

@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Product } from './product.entity';
 
-@Entity({ schema: 'master', name: 'products_stock' })
+@Entity({ name: 'products_stock' })
 export class ProductsStock {
   @PrimaryColumn({ name: 'product_id' })
   productId: number;

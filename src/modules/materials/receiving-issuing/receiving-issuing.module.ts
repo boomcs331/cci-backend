@@ -20,6 +20,7 @@ import {
 } from '../entities';
 import { Product } from '../../products/entities/product.entity';
 import { ProductBom } from '../../products/entities/product-bom.entity';
+import { ProductionOrder } from '../../production-orders/entities/production-order.entity';
 import { AuditModule } from '../../../core/audit/audit.module';
 
 @Module({
@@ -40,6 +41,7 @@ import { AuditModule } from '../../../core/audit/audit.module';
       MaterialIssueDocument,
       Product,
       ProductBom,
+      ProductionOrder,
     ]),
   ],
   controllers: [ReceivingIssuingController],

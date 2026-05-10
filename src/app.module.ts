@@ -10,6 +10,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { ProductionPlansModule } from './modules/production-plans/production-plans.module';
 import { ProductionOrdersModule } from './modules/production-orders/production-orders.module';
 import { AuditModule } from './core/audit/audit.module';
+import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AuditModule } from './core/audit/audit.module';
     ProductsModule,
     ProductionPlansModule,
     ProductionOrdersModule,
+    AiChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

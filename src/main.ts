@@ -8,6 +8,27 @@ import { join } from 'path';
 const DEFAULT_DEV_ORIGIN_PATTERN =
   /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?$/i;
 
+/**
+ * ใน dev ถ้าต้องการเปิดหน้า Next จากเครื่องอื่นใน LAN (เช่น http://192.168.x.x:3000)
+ * ให้ตั้ง CORS_DEV_ALLOW_LAN=1 — จะอนุญาต origin ที่เป็น private IPv4 เท่านั้น
+ */
+const DEV_PRIVATE_LAN_ORIGIN_PATTERN =
+  /^https?:\/\/(10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})(:\d+)?$/i;
+
+/**
+ * Cloudflare Quick Tunnel (TryCloudflare) — URL จะสุ่มทุกครั้ง เช่น
+ *   https://respected-advert-programs-thomas.trycloudflare.com
+ * ปกติเราใช้ Next.js rewrites เป็น proxy แล้วจะ same-origin ไม่ต้องผ่าน CORS
+ * แต่เปิด pattern นี้ไว้เผื่อกรณีฝั่ง client เรียก backend tunnel ตรง ๆ
+ */
+const TRYCLOUDFLARE_ORIGIN_PATTERN =
+  /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i;
+
+function isDevLanCorsEnabled(): boolean {
+  const raw = process.env.CORS_DEV_ALLOW_LAN ?? '';
+  return raw === '1' || /^true$/i.test(raw) || /^yes$/i.test(raw);
+}
+
 function parseExtraOrigins(): string[] {
   const raw = process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
   return raw
@@ -50,6 +71,14 @@ async function bootstrap() {
         callback(null, true);
         return;
       }
+      if (!isProduction && isDevLanCorsEnabled() && DEV_PRIVATE_LAN_ORIGIN_PATTERN.test(origin)) {
+        callback(null, true);
+        return;
+      }
+      if (TRYCLOUDFLARE_ORIGIN_PATTERN.test(origin)) {
+        callback(null, true);
+        return;
+      }
       callback(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -76,6 +105,7 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(process.env.PORT ?? 3006);
+  const port = Number(process.env.PORT ?? 3006);
+  await app.listen(port, '0.0.0.0');
 }
 bootstrap();

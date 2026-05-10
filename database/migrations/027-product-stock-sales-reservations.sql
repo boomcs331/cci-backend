@@ -1,6 +1,6 @@
 -- Finished goods stock (mirror materials_stock) + sales reservations (mirror material_reservations pattern)
 
-CREATE TABLE IF NOT EXISTS master.products_stock (
+CREATE TABLE IF NOT EXISTS public.products_stock (
   product_id INTEGER PRIMARY KEY REFERENCES master.products (id) ON DELETE CASCADE,
   total_qty NUMERIC(15, 4) NOT NULL DEFAULT 0,
   available_qty NUMERIC(15, 4) NOT NULL DEFAULT 0,
@@ -27,11 +27,11 @@ CREATE INDEX IF NOT EXISTS idx_product_sales_reservations_product_id
 CREATE INDEX IF NOT EXISTS idx_product_sales_reservations_status
   ON public.product_sales_reservations (status);
 
-INSERT INTO master.products_stock (product_id, total_qty, available_qty, reserved_qty)
+INSERT INTO public.products_stock (product_id, total_qty, available_qty, reserved_qty)
 SELECT id, 0, 0, 0 FROM master.products
 ON CONFLICT (product_id) DO NOTHING;
 
-UPDATE master.products_stock ps
+UPDATE public.products_stock ps
 SET
   total_qty = COALESCE(sub.sum_q, 0),
   available_qty = GREATEST(

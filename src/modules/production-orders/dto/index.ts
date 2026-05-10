@@ -5,6 +5,7 @@ import {
   IsPositive,
   IsInt,
   IsArray,
+  IsBoolean,
 } from 'class-validator';
 
 export class CreateProductionOrderDto {
@@ -64,4 +65,24 @@ export class CreateProcessDto {
   @IsArray()
   @IsString({ each: true })
   allowedDepartmentCodes?: string[];
+}
+
+export class SplitLotDto {
+  /** Quantity that should be released as a new child lot (must be > 0 and < source lot quantity). */
+  @IsNumber()
+  @IsPositive()
+  releasedQuantity: number;
+
+  /** If true (default), released lot is moved to next process immediately. */
+  @IsOptional()
+  @IsBoolean()
+  moveReleasedToNextStep?: boolean;
+
+  @IsOptional()
+  @IsString()
+  operator?: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

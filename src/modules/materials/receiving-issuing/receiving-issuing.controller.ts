@@ -6,6 +6,8 @@ import {
   CreateIssuingWithDocumentDto,
   CreateIssuingFromBomDto,
   MaterialTransactionReportDto,
+  TraceabilityByLotDto,
+  TraceabilityByProductionOrderDto,
 } from './dto';
 import {
   CreateManualIssueDto,
@@ -292,6 +294,41 @@ export class ReceivingIssuingController {
     return ResponseHelper.success(
       report,
       'Transaction report retrieved successfully',
+    );
+  }
+
+  @Get('traceability/by-lot')
+  async getTraceabilityByLot(@Query() query: TraceabilityByLotDto) {
+    const data = await this.service.getTraceabilityByLot(
+      query.lotNo,
+      query.qrCode,
+    );
+    return ResponseHelper.success(
+      data,
+      'Traceability (by lot) retrieved successfully',
+    );
+  }
+
+  @Get('traceability/by-issuing')
+  async getTraceabilityByIssuing(@Query('issuingNo') issuingNo: string) {
+    const data = await this.service.getTraceabilityByIssuing(issuingNo);
+    return ResponseHelper.success(
+      data,
+      'Traceability (by issuing) retrieved successfully',
+    );
+  }
+
+  @Get('traceability/by-production-order')
+  async getTraceabilityByProductionOrder(
+    @Query() query: TraceabilityByProductionOrderDto,
+  ) {
+    const data = await this.service.getTraceabilityByProductionOrder(
+      query.orderNo,
+      query.id,
+    );
+    return ResponseHelper.success(
+      data,
+      'Traceability (by production order) retrieved successfully',
     );
   }
 }

@@ -11,6 +11,11 @@ import {
   MaterialsLocation,
   MaterialsStock,
   Supplier,
+  Model,
+  DeliveryType,
+  Unit,
+  LoadingPoint,
+  ProcessLine,
 } from './entities';
 import {
   CreateMaterialDto,
@@ -222,11 +227,38 @@ export class MaterialsService {
         if (!locationExists) throw new NotFoundException('Location not found');
       }
 
-      if (dto.supplierId) {
+      if (dto.supplierId && dto.supplierId > 0) {
         const supplierExists = await manager.findOne(Supplier, {
           where: { id: dto.supplierId },
         });
         if (!supplierExists) throw new NotFoundException('Supplier not found');
+      }
+
+      if (dto.modelId && dto.modelId > 0) {
+        const row = await manager.findOne(Model, { where: { id: dto.modelId } });
+        if (!row) throw new NotFoundException('Model not found');
+      }
+      if (dto.deliveryTypeId && dto.deliveryTypeId > 0) {
+        const row = await manager.findOne(DeliveryType, {
+          where: { id: dto.deliveryTypeId },
+        });
+        if (!row) throw new NotFoundException('Delivery type not found');
+      }
+      if (dto.unitId && dto.unitId > 0) {
+        const row = await manager.findOne(Unit, { where: { id: dto.unitId } });
+        if (!row) throw new NotFoundException('Unit not found');
+      }
+      if (dto.loadingPointId && dto.loadingPointId > 0) {
+        const row = await manager.findOne(LoadingPoint, {
+          where: { id: dto.loadingPointId },
+        });
+        if (!row) throw new NotFoundException('Loading point not found');
+      }
+      if (dto.processLineId && dto.processLineId > 0) {
+        const row = await manager.findOne(ProcessLine, {
+          where: { id: dto.processLineId },
+        });
+        if (!row) throw new NotFoundException('Process line not found');
       }
 
       const updateFields: string[] = [];
@@ -262,7 +294,35 @@ export class MaterialsService {
       }
       if (dto.supplierId !== undefined) {
         updateFields.push(`supplier_id = $${updateFields.length + 1}`);
-        updateValues.push(dto.supplierId);
+        updateValues.push(dto.supplierId > 0 ? dto.supplierId : null);
+      }
+      if (dto.minStock !== undefined) {
+        updateFields.push(`min_stock = $${updateFields.length + 1}`);
+        updateValues.push(dto.minStock);
+      }
+      if (dto.modelId !== undefined) {
+        updateFields.push(`model_id = $${updateFields.length + 1}`);
+        updateValues.push(dto.modelId > 0 ? dto.modelId : null);
+      }
+      if (dto.deliveryTypeId !== undefined) {
+        updateFields.push(`delivery_type_id = $${updateFields.length + 1}`);
+        updateValues.push(dto.deliveryTypeId > 0 ? dto.deliveryTypeId : null);
+      }
+      if (dto.unitId !== undefined) {
+        updateFields.push(`unit_id = $${updateFields.length + 1}`);
+        updateValues.push(dto.unitId > 0 ? dto.unitId : null);
+      }
+      if (dto.scale !== undefined) {
+        updateFields.push(`scale = $${updateFields.length + 1}`);
+        updateValues.push(dto.scale?.trim() ? dto.scale.trim() : null);
+      }
+      if (dto.loadingPointId !== undefined) {
+        updateFields.push(`loading_point_id = $${updateFields.length + 1}`);
+        updateValues.push(dto.loadingPointId > 0 ? dto.loadingPointId : null);
+      }
+      if (dto.processLineId !== undefined) {
+        updateFields.push(`process_line_id = $${updateFields.length + 1}`);
+        updateValues.push(dto.processLineId > 0 ? dto.processLineId : null);
       }
       if (dto.isActive !== undefined) {
         updateFields.push(`is_active = $${updateFields.length + 1}`);

@@ -121,6 +121,30 @@ export class UpdateMaterialDto {
   supplierId?: number;
 
   @IsOptional()
+  @IsNumber()
+  modelId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  deliveryTypeId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  unitId?: number;
+
+  @IsOptional()
+  @IsString()
+  scale?: string;
+
+  @IsOptional()
+  @IsNumber()
+  loadingPointId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  processLineId?: number;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
