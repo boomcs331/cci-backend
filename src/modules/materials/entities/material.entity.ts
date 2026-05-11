@@ -81,6 +81,15 @@ export class Material {
   @Column({ name: 'process_line_id', nullable: true })
   processLineId: number;
 
+  /** Relative path e.g. uploads/material-workpieces/xxx.jpg (served under /uploads/) */
+  @Column({
+    name: 'workpiece_image_path',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  workpieceImagePath: string | null;
+
   @ManyToOne(() => MaterialsType, (materialsType) => materialsType.materials)
   @JoinColumn({ name: 'mat_type_id' })
   materialsType: MaterialsType;

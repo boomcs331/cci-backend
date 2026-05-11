@@ -65,6 +65,7 @@ export class MaterialsService {
       scale: dto.scale,
       loadingPointId: dto.loadingPointId,
       processLineId: dto.processLineId,
+      workpieceImagePath: dto.workpieceImagePath?.trim() || null,
       isActive: dto.isActive ?? true,
       createBy: dto.createBy ?? 'system',
     });
@@ -327,6 +328,11 @@ export class MaterialsService {
       if (dto.isActive !== undefined) {
         updateFields.push(`is_active = $${updateFields.length + 1}`);
         updateValues.push(dto.isActive);
+      }
+      if (dto.workpieceImagePath !== undefined) {
+        updateFields.push(`workpiece_image_path = $${updateFields.length + 1}`);
+        const raw = String(dto.workpieceImagePath).trim();
+        updateValues.push(raw === '' ? null : raw);
       }
 
       updateFields.push(`update_date = $${updateFields.length + 1}`);

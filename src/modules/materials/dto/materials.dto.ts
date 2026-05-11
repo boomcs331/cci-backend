@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsNotEmpty } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class CreateMaterialDto {
@@ -73,6 +73,12 @@ export class CreateMaterialDto {
   @IsOptional()
   @IsString()
   createBy?: string;
+
+  /** Path from upload API e.g. uploads/material-workpieces/xxx.jpg — required for new materials */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาแนบรูปภาพชิ้นงาน (workpieceImagePath)' })
+  workpieceImagePath: string;
 }
 
 export class UpdateMaterialDto {
@@ -154,6 +160,10 @@ export class UpdateMaterialDto {
   @IsOptional()
   @IsNumber()
   initialStock?: number;
+
+  @IsOptional()
+  @IsString()
+  workpieceImagePath?: string;
 }
 
 export class CreateMaterialsTypeDto {
