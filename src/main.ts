@@ -1,6 +1,9 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { formatValidationErrors } from './shared/validators/format-validation-errors';
+import { PcErrorCode } from './shared/errors/pc-error.codes';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 
@@ -88,19 +91,31 @@ async function bootstrap() {
       'Accept',
       'Accept-Language',
       'x-user-id',
+      'x-username',
       'x-department-id',
       'X-Requested-With',
     ],
     credentials: true,
   });
 
-  // Enable validation globally
+  app.useGlobalFilters(new HttpExceptionFilter());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
       transformOptions: {
         enableImplicitConversion: true,
+      },
+      exceptionFactory: (errors) => {
+        const fields = formatValidationErrors(errors);
+        return new BadRequestException({
+          success: false,
+          code: PcErrorCode.VALIDATION_FAILED,
+          message: fields[0]?.message ?? 'ข้อมูลไม่ถูกต้อง',
+          errors: fields,
+          timestamp: new Date().toISOString(),
+        });
       },
     }),
   );

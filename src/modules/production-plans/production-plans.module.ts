@@ -10,9 +10,11 @@ import {
 import { Product, ProductBom } from '../products/entities';
 import { MaterialsStock } from '../materials/entities/materials-stock.entity';
 import { ProductionOrdersModule } from '../production-orders/production-orders.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
+    AuthModule,
     ProductionOrdersModule,
     TypeOrmModule.forFeature([
       ProductionPlan,

@@ -81,18 +81,25 @@ export class ReceivingIssuingController {
   async findAllIssues(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
+    @Query('search') search?: string,
+    @Query('materialId') materialId?: string,
     @Query('issueType') issueType?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
+    const materialIdNum = materialId ? parseInt(materialId, 10) : undefined;
     const result = await this.service.findAllIssues(
       pageNum,
       limitNum,
-      issueType,
-      startDate,
-      endDate,
+      {
+        search,
+        materialId: Number.isFinite(materialIdNum) ? materialIdNum : undefined,
+        issueType,
+        startDate,
+        endDate,
+      },
     );
     return ResponseHelper.paginated(
       result.data,

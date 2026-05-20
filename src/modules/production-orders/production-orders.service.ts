@@ -50,6 +50,65 @@ export class ProductionOrdersService {
     private readonly qrScanLogService: QrScanLogService,
   ) {}
 
+  /** ค่า operator ที่เป็นตัวเลขล้วน = user id จาก client เก่า — แปลงเป็น username (login) */
+  private looksLikeUserId(value: string): boolean {
+    return /^\d+$/.test(value.trim());
+  }
+
+  private async resolveOperatorLogin(
+    dtoOperator?: string,
+    user?: User | null,
+  ): Promise<string> {
+    const fromUser = user?.username?.trim();
+    if (fromUser) return fromUser;
+
+    const raw = dtoOperator?.trim();
+    if (!raw) return 'scanner';
+
+    if (this.looksLikeUserId(raw)) {
+      try {
+        const u = await this.authUserService.findUserById(raw);
+        const login = u.username?.trim();
+        if (login) return login;
+      } catch {
+        /* keep raw */
+      }
+    }
+    return raw;
+  }
+
+  private async operatorLoginFromStored(
+    stored: string | null | undefined,
+  ): Promise<string | null> {
+    const raw = stored?.trim();
+    if (!raw) return null;
+    if (!this.looksLikeUserId(raw)) return raw;
+    try {
+      const u = await this.authUserService.findUserById(raw);
+      return u.username?.trim() || raw;
+    } catch {
+      return raw;
+    }
+  }
+
+  private async enrichOrderTrackingOperators(order: ProductionOrder): Promise<void> {
+    const cache = new Map<string, string>();
+    for (const lot of order.lots ?? []) {
+      for (const t of lot.tracking ?? []) {
+        const op = t.operator?.trim();
+        if (!op || !this.looksLikeUserId(op) || cache.has(op)) continue;
+        const login = await this.operatorLoginFromStored(op);
+        if (login) cache.set(op, login);
+      }
+    }
+    for (const lot of order.lots ?? []) {
+      for (const t of lot.tracking ?? []) {
+        const op = t.operator?.trim();
+        if (op && cache.has(op)) t.operator = cache.get(op)!;
+      }
+    }
+  }
+
   private userIsAdminGlobal(user: User | null | undefined): boolean {
     if (!user) return false;
     const fromDirect = user.roles?.some((r) => r.code === 'ADMIN_GLOBAL');
@@ -375,11 +434,14 @@ export class ProductionOrdersService {
         'product.customer',
         'lots',
         'lots.currentProcess',
+        'lots.tracking',
+        'lots.tracking.process',
         'plan',
         'planItem',
       ],
     });
     if (!order) throw new NotFoundException('Order not found');
+    await this.enrichOrderTrackingOperators(order);
     return order;
   }
 
@@ -477,10 +539,7 @@ export class ProductionOrdersService {
         );
       }
 
-      const operator =
-        (dto.operator && dto.operator.trim()) ||
-        user?.username ||
-        'scanner';
+      const operator = await this.resolveOperatorLogin(dto.operator, user);
 
       const tracking = manager.create(ProductionLotTracking, {
         lotId: lot.id,
@@ -720,8 +779,7 @@ export class ProductionOrdersService {
       const childOrderLabelA = `${childOrderLabelBase}-S${String(splitRunA).padStart(2, '0')}`;
       const childOrderLabelB = `${childOrderLabelBase}-S${String(splitRunB).padStart(2, '0')}`;
 
-      const operator =
-        (dto.operator && dto.operator.trim()) || user?.username || 'scanner';
+      const operator = await this.resolveOperatorLogin(dto.operator, user);
       const reason = (dto.reason && dto.reason.trim()) || 'split lot';
 
       const released = manager.create(ProductionLot, {
@@ -913,15 +971,19 @@ export class ProductionOrdersService {
       );
     }
 
-    return (lot.tracking ?? []).map((t) => ({
-      status: t.status,
-      processCode: t.process?.processCode ?? null,
-      processName: t.process?.processName ?? null,
-      startTime: t.startTime ?? null,
-      endTime: t.endTime ?? null,
-      operator: t.operator ?? null,
-      remarks: t.remarks ?? null,
-    }));
+    const rows = lot.tracking ?? [];
+    const mapped = await Promise.all(
+      rows.map(async (t) => ({
+        status: t.status,
+        processCode: t.process?.processCode ?? null,
+        processName: t.process?.processName ?? null,
+        startTime: t.startTime ?? null,
+        endTime: t.endTime ?? null,
+        operator: (await this.operatorLoginFromStored(t.operator)) ?? null,
+        remarks: t.remarks ?? null,
+      })),
+    );
+    return mapped;
   }
 
   async getLotLineage(qrCode: string, _userId?: string) {
@@ -1096,6 +1158,24 @@ export class ProductionOrdersService {
 
     const station = await this.buildLotQrStationView(lot, userId);
 
+    const trackingRows = await Promise.all(
+      lot.tracking.map(async (t) => ({
+        processCode: t.process.processCode,
+        processName: t.process.processName,
+        startTime: t.startTime,
+        endTime: t.endTime,
+        status: t.status,
+        operator: (await this.operatorLoginFromStored(t.operator)) ?? t.operator,
+        remarks: t.remarks,
+        duration:
+          t.endTime && t.startTime
+            ? Math.round(
+                (t.endTime.getTime() - t.startTime.getTime()) / 60000,
+              ) + ' \u0e19\u0e32\u0e17\u0e35'
+            : null,
+      })),
+    );
+
     const payload = {
       lotNo: lot.lotNo,
       qrCode: lot.qrCode,
@@ -1114,21 +1194,7 @@ export class ProductionOrdersService {
       canOperateCurrentStep: station.canStart || station.canComplete,
       expectedProcess: station.expectedProcess,
       inProgressStep: station.inProgress,
-      tracking: lot.tracking.map((t) => ({
-        processCode: t.process.processCode,
-        processName: t.process.processName,
-        startTime: t.startTime,
-        endTime: t.endTime,
-        status: t.status,
-        operator: t.operator,
-        remarks: t.remarks,
-        duration:
-          t.endTime && t.startTime
-            ? Math.round(
-                (t.endTime.getTime() - t.startTime.getTime()) / 60000,
-              ) + ' \u0e19\u0e32\u0e17\u0e35'
-            : null,
-      })),
+      tracking: trackingRows,
     };
 
     await this.qrScanLogService.logEvent({

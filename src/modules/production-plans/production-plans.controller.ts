@@ -18,16 +18,20 @@ import {
 } from './dto';
 import { DepartmentScope } from '../auth/decorators/department-scope.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { AuthUserService } from '../auth/services/auth-user.service';
 
 @Controller('production-plans')
 @DepartmentScope({ source: 'headers', key: 'x-department-id' })
 export class ProductionPlansController {
-  constructor(private readonly service: ProductionPlansService) {}
+  constructor(
+    private readonly service: ProductionPlansService,
+    private readonly authUserService: AuthUserService,
+  ) {}
 
   @Post()
   @RequirePermissions('production_plans.create')
-  create(@Body() dto: CreateProductionPlanDto, @Request() req) {
-    const username = req.user?.username || 'system';
+  async create(@Body() dto: CreateProductionPlanDto, @Request() req) {
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.create(dto, username);
   }
 
@@ -63,12 +67,12 @@ export class ProductionPlansController {
 
   @Patch(':id')
   @RequirePermissions('production_plans.update')
-  update(
+  async update(
     @Param('id') id: string,
     @Body() dto: UpdateProductionPlanDto,
     @Request() req,
   ) {
-    const username = req.user?.username || 'system';
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.update(+id, dto, username);
   }
 
@@ -86,13 +90,13 @@ export class ProductionPlansController {
 
   @Patch(':id/items/:itemId')
   @RequirePermissions('production_plans.update')
-  updateItem(
+  async updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() dto: UpdatePlanItemDto,
     @Request() req,
   ) {
-    const username = req.user?.username || 'system';
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.updateItem(+id, +itemId, dto, username);
   }
 
@@ -104,48 +108,48 @@ export class ProductionPlansController {
 
   @Post(':id/reserve')
   @RequirePermissions('production_plans.reserve')
-  reserve(@Param('id') id: string, @Request() req) {
-    const username = req.user?.username || 'system';
+  async reserve(@Param('id') id: string, @Request() req) {
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.reserveMaterials(+id, username);
   }
 
   /** สร้าง Production Order + QR lots (แผน reserved หรือ confirmed): จำนวน QR = ceil(quantity / lotSize); บรรทัดเดิมมี order แล้วคืนข้อมูลเดิม */
   @Post(':id/generate-product-qr-orders')
   @RequirePermissions('production_plans.generate_orders')
-  generateProductQrOrders(
+  async generateProductQrOrders(
     @Param('id') id: string,
     @Body() dto: GenerateProductQrOrdersFromPlanDto,
     @Request() req,
   ) {
-    const username = req.user?.username || 'system';
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.generateProductQrOrdersFromPlan(+id, dto, username);
   }
 
   @Post(':id/confirm')
   @RequirePermissions('production_plans.approve')
-  confirm(@Param('id') id: string, @Request() req) {
-    const username = req.user?.username || 'system';
+  async confirm(@Param('id') id: string, @Request() req) {
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.confirm(+id, username);
   }
 
   @Post(':id/confirm-and-issue')
   @RequirePermissions('production_plans.approve', 'production_plans.issue')
-  confirmAndIssue(@Param('id') id: string, @Request() req) {
-    const username = req.user?.username || 'system';
+  async confirmAndIssue(@Param('id') id: string, @Request() req) {
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.confirmAndIssue(+id, username);
   }
 
   @Post(':id/issue')
   @RequirePermissions('production_plans.issue')
-  issue(@Param('id') id: string, @Request() req) {
-    const username = req.user?.username || 'system';
+  async issue(@Param('id') id: string, @Request() req) {
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.issueMaterials(+id, username);
   }
 
   @Post(':id/cancel')
   @RequirePermissions('production_plans.cancel')
-  cancel(@Param('id') id: string, @Request() req) {
-    const username = req.user?.username || 'system';
+  async cancel(@Param('id') id: string, @Request() req) {
+    const username = await this.authUserService.resolveUsernameFromRequest(req);
     return this.service.cancel(+id, username);
   }
 

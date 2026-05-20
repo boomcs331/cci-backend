@@ -56,6 +56,8 @@ const migrationFiles = [
   '030-sales-reservations-path-production.sql',
   '031-menu-materials-products-overview.sql',
   '032-menu-overview-hubs-users-balances.sql',
+  '042-material-receiving-po-no-format.sql',
+  '043-material-receiving-po-no-allow-special.sql',
 ];
 
 async function main() {

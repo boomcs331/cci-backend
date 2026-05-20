@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -42,6 +43,10 @@ import {
   QrScanDomain,
 } from '../../../core/audit/entities/qr-scan-log.entity';
 import { QrScanLogService } from '../../../core/audit/services/qr-scan-log.service';
+import { PcReceivingBusiness } from '../../../business/pc/receiving/pc-receiving.business';
+import { BusinessException } from '../../../shared/errors/business.exception';
+import { PcErrorCode } from '../../../shared/errors/pc-error.codes';
+import { pcInsufficientStockMessage } from '../../../shared/errors/pc-insufficient-stock.message';
 
 @Injectable()
 export class ReceivingIssuingService {
@@ -78,100 +83,88 @@ export class ReceivingIssuingService {
     private productionOrderRepository: Repository<ProductionOrder>,
     private dataSource: DataSource,
     private readonly qrScanLogService: QrScanLogService,
+    private readonly pcReceivingBusiness: PcReceivingBusiness,
   ) {}
 
   async createReceiving(dto: CreateReceivingDto): Promise<MaterialReceiving> {
+    const validated = this.pcReceivingBusiness.validateAndNormalize(dto);
+
     return await this.dataSource.transaction(async (manager) => {
-      // Validate material
       const material = await manager.findOne(Material, {
-        where: { id: dto.materialId },
+        where: { id: validated.materialId },
         relations: ['unitMaster'],
       });
-      if (!material) throw new NotFoundException('Material not found');
+      if (!material) {
+        throw BusinessException.fromCode(PcErrorCode.PC_MATERIAL_NOT_FOUND, {
+          field: 'materialId',
+          status: HttpStatus.NOT_FOUND,
+        });
+      }
 
-      // Calculate number of lots based on lotSize
-      const lotSize = material.lotSize || 1;
-      const numberOfLots = Math.ceil(dto.totalQuantity / lotSize);
-      const quantityPerLot = lotSize;
-      const lastLotQuantity =
-        dto.totalQuantity - quantityPerLot * (numberOfLots - 1);
+      const { numberOfLots, quantityPerLot, lastLotQuantity } =
+        this.pcReceivingBusiness.calculateLotSplit(
+          validated.totalQuantity,
+          material.lotSize || 1,
+        );
 
-      // Generate receiving number
       const count = await manager.count(MaterialReceiving);
-      const receivingNo = `RCV-${new Date().getFullYear()}-${String(count + 1).padStart(8, '0')}`;
+      const receivingNo = this.pcReceivingBusiness.generateReceivingNo(
+        new Date().getFullYear(),
+        count + 1,
+      );
 
-      // Create receiving header
       const receiving = manager.create(MaterialReceiving, {
         receivingNo,
         receivingDate: new Date(),
-        materialId: dto.materialId,
-        supplierId: dto.supplierId,
-        totalQuantity: dto.totalQuantity,
+        materialId: validated.materialId,
+        supplierId: validated.supplierId,
+        totalQuantity: validated.totalQuantity,
         unit: material.unitMaster?.code || 'PCS',
-        poNo: dto.poNo,
-        remark: dto.remark,
+        poNo: validated.poNo,
+        remark: validated.remark,
         status: 'ACTIVE',
-        createBy: dto.createBy ?? 'system',
+        createBy: validated.createBy,
       });
       const savedReceiving = await manager.save(receiving);
 
-      // Create lots automatically
       const today = new Date();
-      const pcDateStr =
-        today.getFullYear() +
-        String(today.getMonth() + 1).padStart(2, '0') +
-        String(today.getDate()).padStart(2, '0');
-
-      // Use mfgDate for PD lot, fallback to today if not provided
-      const pdDate = dto.mfgDate ? new Date(dto.mfgDate) : today;
-      const pdDateStr =
-        pdDate.getFullYear() +
-        String(pdDate.getMonth() + 1).padStart(2, '0') +
-        String(pdDate.getDate()).padStart(2, '0');
-
-      // Count existing PC lots for today
-      const startOfDay = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate(),
+      const pcDatePrefix = this.pcReceivingBusiness.formatDatePrefix(today);
+      const pdDatePrefix = this.pcReceivingBusiness.formatDatePrefix(
+        validated.mfgDateAsDate,
       );
-      const endOfDay = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate() + 1,
-      );
+
+      const startOfDay = this.pcReceivingBusiness.startOfDay(today);
+      const endOfDay = this.pcReceivingBusiness.endOfDay(today);
 
       const existingPcCount = await manager
         .createQueryBuilder(MaterialReceivingLot, 'lot')
-        .where('lot.lotNo LIKE :prefix', { prefix: `PC${pcDateStr}-%` })
+        .where('lot.lotNo LIKE :prefix', { prefix: `PC${pcDatePrefix}-%` })
         .andWhere('lot.createDate >= :startOfDay', { startOfDay })
         .andWhere('lot.createDate < :endOfDay', { endOfDay })
         .getCount();
 
-      // Count existing PD lots for mfgDate
-      const pdStartOfDay = new Date(
-        pdDate.getFullYear(),
-        pdDate.getMonth(),
-        pdDate.getDate(),
+      const pdStartOfDay = this.pcReceivingBusiness.startOfDay(
+        validated.mfgDateAsDate,
       );
-      const pdEndOfDay = new Date(
-        pdDate.getFullYear(),
-        pdDate.getMonth(),
-        pdDate.getDate() + 1,
+      const pdEndOfDay = this.pcReceivingBusiness.endOfDay(
+        validated.mfgDateAsDate,
       );
 
       const existingPdCount = await manager
         .createQueryBuilder(MaterialReceivingLot, 'lot')
-        .where('lot.lotPdNo LIKE :prefix', { prefix: `PD${pdDateStr}-%` })
+        .where('lot.lotPdNo LIKE :prefix', { prefix: `PD${pdDatePrefix}-%` })
         .andWhere('lot.incomeSupplireDate >= :pdStartOfDay', { pdStartOfDay })
         .andWhere('lot.incomeSupplireDate < :pdEndOfDay', { pdEndOfDay })
         .getCount();
 
       for (let i = 0; i < numberOfLots; i++) {
-        const pcRunNo = String(existingPcCount + i + 1).padStart(3, '0');
-        const pdRunNo = String(existingPdCount + i + 1).padStart(3, '0');
-        const lotNo = `PC${pcDateStr}-${pcRunNo}`;
-        const lotPdNo = `PD${pdDateStr}-${pdRunNo}`;
+        const { lotNo, lotPdNo } = this.pcReceivingBusiness.buildLotIdentifiers({
+          pcDatePrefix,
+          pdDatePrefix,
+          existingPcCount,
+          existingPdCount,
+          lotIndex: i,
+        });
         const qrCode = buildInventoryStyleQrCode(lotNo);
         const lotQuantity =
           i === numberOfLots - 1 ? lastLotQuantity : quantityPerLot;
@@ -181,49 +174,49 @@ export class ReceivingIssuingService {
           lotNo,
           lotPdNo,
           qrCode,
-          materialId: dto.materialId,
+          materialId: validated.materialId,
           quantity: lotQuantity,
           remainingQuantity: lotQuantity,
           unit: material.unitMaster?.code || 'PCS',
-          locationId: dto.locationId,
-          expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : undefined,
-          incomeSupplireDate: dto.mfgDate ? new Date(dto.mfgDate) : undefined,
+          locationId: validated.locationId,
+          expiryDate: validated.expiryDate
+            ? new Date(validated.expiryDate)
+            : undefined,
+          incomeSupplireDate: validated.mfgDateAsDate,
           status: 'AVAILABLE',
-          createBy: dto.createBy ?? 'system',
+          createBy: validated.createBy,
         });
         await manager.save(lot);
 
-        // Create transaction log with unique transaction number
         const txnNo = `TXN-${new Date().getFullYear()}-${Date.now()}-${String(i + 1).padStart(3, '0')}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
         const transaction = manager.create(MaterialTransaction, {
           transactionNo: txnNo,
           transactionType: 'RECEIVE',
           transactionDate: new Date(),
-          materialId: dto.materialId,
+          materialId: validated.materialId,
           lotId: lot.id,
           qrCode: lot.qrCode,
           quantity: lotQuantity,
           remainingQuantity: lotQuantity,
           referenceNo: receivingNo,
-          remark: dto.remark,
-          createBy: dto.createBy ?? 'system',
+          remark: validated.remark,
+          createBy: validated.createBy,
         });
         await manager.save(transaction);
       }
 
-      // Update stock
       let stock = await manager.findOne(MaterialsStock, {
-        where: { materialId: dto.materialId },
+        where: { materialId: validated.materialId },
       });
       if (stock) {
-        stock.totalQty += dto.totalQuantity;
-        stock.availableQty += dto.totalQuantity;
+        stock.totalQty += validated.totalQuantity;
+        stock.availableQty += validated.totalQuantity;
         await manager.save(stock);
       } else {
         stock = manager.create(MaterialsStock, {
-          materialId: dto.materialId,
-          totalQty: dto.totalQuantity,
-          availableQty: dto.totalQuantity,
+          materialId: validated.materialId,
+          totalQty: validated.totalQuantity,
+          availableQty: validated.totalQuantity,
           reservedQty: 0,
         });
         await manager.save(stock);
@@ -267,9 +260,14 @@ export class ReceivingIssuingService {
         0,
       );
       if (totalAvailable < dto.quantity) {
-        throw new ConflictException(
-          `Insufficient stock. Available: ${totalAvailable}, Requested: ${dto.quantity}`,
-        );
+        throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+          message: pcInsufficientStockMessage(
+            material.matCode,
+            totalAvailable,
+            dto.quantity,
+          ),
+          status: HttpStatus.CONFLICT,
+        });
       }
 
       const count = await manager.count(MaterialIssuing);
@@ -722,9 +720,14 @@ export class ReceivingIssuingService {
           0,
         );
         if (totalAvailable < requiredQty) {
-          throw new ConflictException(
-            `Insufficient stock for material ${bom.material.matCode}. Available: ${totalAvailable}, Required: ${requiredQty}`,
-          );
+          throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+            message: pcInsufficientStockMessage(
+              bom.material.matCode,
+              totalAvailable,
+              requiredQty,
+            ),
+            status: HttpStatus.CONFLICT,
+          });
         }
 
         const count = await manager.count(MaterialIssuing);
@@ -855,9 +858,13 @@ export class ReceivingIssuingService {
         });
         if (!stock || stock.availableQty < item.quantity) {
           const available = stock?.availableQty || 0;
-          throw new BadRequestException(
-            `Insufficient stock for material ${material.matCode}. Available: ${available}, Requested: ${item.quantity}`,
-          );
+          throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+            message: pcInsufficientStockMessage(
+              material.matCode,
+              available,
+              item.quantity,
+            ),
+          });
         }
       }
 
@@ -1054,9 +1061,13 @@ export class ReceivingIssuingService {
         });
         if (!stock || stock.availableQty < requiredQty) {
           const available = stock?.availableQty || 0;
-          throw new BadRequestException(
-            `Insufficient stock for material ${bom.material.matCode}. Available: ${available}, Required: ${requiredQty}`,
-          );
+          throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+            message: pcInsufficientStockMessage(
+              bom.material.matCode,
+              available,
+              requiredQty,
+            ),
+          });
         }
       }
 
@@ -1244,9 +1255,13 @@ export class ReceivingIssuingService {
   async findAllIssues(
     page = 1,
     limit = 10,
-    issueType?: string,
-    startDate?: string,
-    endDate?: string,
+    filters: {
+      search?: string;
+      materialId?: number;
+      issueType?: string;
+      startDate?: string;
+      endDate?: string;
+    } = {},
   ) {
     const query = this.issueRepo
       .createQueryBuilder('issue')
@@ -1256,14 +1271,45 @@ export class ReceivingIssuingService {
       .leftJoinAndSelect('issue.documents', 'documents')
       .where('issue.isActive = :isActive', { isActive: true });
 
-    if (issueType)
-      query.andWhere('issue.issueType = :issueType', { issueType });
-    if (startDate)
-      query.andWhere('issue.issueDate >= :startDate', { startDate });
-    if (endDate) query.andWhere('issue.issueDate <= :endDate', { endDate });
+    if (filters.issueType) {
+      query.andWhere('issue.issueType = :issueType', {
+        issueType: filters.issueType,
+      });
+    }
+    if (filters.startDate) {
+      query.andWhere('issue.issueDate >= :startDate', {
+        startDate: filters.startDate,
+      });
+    }
+    if (filters.endDate) {
+      query.andWhere('issue.issueDate <= :endDate', { endDate: filters.endDate });
+    }
+    if (filters.materialId) {
+      query.andWhere(
+        `EXISTS (
+          SELECT 1 FROM material_issue_items mii
+          WHERE mii.issue_id = issue.id AND mii.material_id = :materialId
+        )`,
+        { materialId: filters.materialId },
+      );
+    }
+    if (filters.search?.trim()) {
+      const search = `%${filters.search.trim()}%`;
+      query.andWhere(
+        `(
+          issue.issueNo ILIKE :search
+          OR issue.documentNo ILIKE :search
+          OR issue.productionOrderNo ILIKE :search
+          OR material.matCode ILIKE :search
+          OR material.matName ILIKE :search
+        )`,
+        { search },
+      );
+    }
 
     query
       .orderBy('issue.issueDate', 'DESC')
+      .addOrderBy('issue.id', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -1825,9 +1871,14 @@ export class ReceivingIssuingService {
           0,
         );
         if (totalAvailable < requiredQty) {
-          throw new ConflictException(
-            `Insufficient stock for material ${bom.childMaterial.matCode}. Available: ${totalAvailable}, Required: ${requiredQty}`,
-          );
+          throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+            message: pcInsufficientStockMessage(
+              bom.childMaterial.matCode,
+              totalAvailable,
+              requiredQty,
+            ),
+            status: HttpStatus.CONFLICT,
+          });
         }
 
         const count = await manager.count(MaterialIssuing);

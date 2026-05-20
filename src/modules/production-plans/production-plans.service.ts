@@ -65,11 +65,57 @@ export class ProductionPlansService {
     return this.findOne(savedPlan.id);
   }
 
+  /** remark จ่ายออก = `จ่ายออกสำหรับแผนการผลิต {planCode}` */
+  private planIssueRemark(planCode: string) {
+    return `จ่ายออกสำหรับแผนการผลิต ${planCode}`;
+  }
+
+  private async getMaterialIssuedByMapForPlanCodes(
+    planCodes: string[],
+  ): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    const unique = [...new Set(planCodes.filter((c) => c?.trim()))];
+    for (const code of unique) {
+      map.set(code, []);
+    }
+    if (!unique.length) return map;
+
+    const remarks = unique.map((c) => this.planIssueRemark(c));
+    const rows = await this.dataSource.query(
+      `SELECT mis.remark AS remark, TRIM(mis.create_by) AS create_by
+       FROM material_issuing mis
+       WHERE mis.remark = ANY($1::text[])
+         AND mis.create_by IS NOT NULL
+         AND TRIM(mis.create_by) <> ''
+       ORDER BY mis.remark, create_by`,
+      [remarks],
+    );
+
+    const prefix = 'จ่ายออกสำหรับแผนการผลิต ';
+    for (const r of rows) {
+      const remark = String(r.remark ?? '');
+      if (!remark.startsWith(prefix)) continue;
+      const code = remark.slice(prefix.length);
+      const by = String(r.create_by ?? '').trim();
+      if (!by || !map.has(code)) continue;
+      const list = map.get(code)!;
+      if (!list.includes(by)) list.push(by);
+    }
+    return map;
+  }
+
   async findAll() {
-    return this.planRepo.find({
+    const plans = await this.planRepo.find({
       relations: ['items', 'items.product'],
       order: { createDate: 'DESC' },
     });
+    const issuerMap = await this.getMaterialIssuedByMapForPlanCodes(
+      plans.map((p) => p.planCode),
+    );
+    return plans.map((plan) => ({
+      ...plan,
+      materialIssuedBy: issuerMap.get(plan.planCode) ?? [],
+    }));
   }
 
   async findOne(id: number) {
@@ -1513,9 +1559,10 @@ export class ProductionPlansService {
       [planId],
     );
 
+    const planIssueRemark = this.planIssueRemark(plan.planCode);
+
     /** หลัง confirm/issue แถว material_reservations ถูกลบ — ดึง Lot/QR จากงานจ่ายจริงสำหรับใบจัด */
     if (!reservations.length && plan.status === PlanStatus.CONFIRMED) {
-      const remark = `จ่ายออกสำหรับแผนการผลิต ${plan.planCode}`;
       reservations = await this.dataSource.query(
         `SELECT 
           mis.material_id,
@@ -1533,9 +1580,14 @@ export class ProductionPlansService {
         INNER JOIN master.materials m ON m.id = mis.material_id
         WHERE mis.remark = $1
         ORDER BY m.mat_code, mil.create_date, mrl.lot_no`,
-        [remark],
+        [planIssueRemark],
       );
     }
+
+    const issuerMap = await this.getMaterialIssuedByMapForPlanCodes([
+      plan.planCode,
+    ]);
+    const materialIssuedBy = issuerMap.get(plan.planCode) ?? [];
 
     return {
       id: plan.id,
@@ -1545,6 +1597,9 @@ export class ProductionPlansService {
       planDate: plan.planDate,
       status: plan.status,
       remarks: plan.remarks,
+      createDate: plan.createDate,
+      createBy: plan.createBy,
+      materialIssuedBy,
       items: details,
       reservations: reservations.map((r) => ({
         materialId: r.material_id,

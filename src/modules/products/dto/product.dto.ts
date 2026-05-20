@@ -130,6 +130,10 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  productImagePath?: string;
 }
 
 export class UpdateProductDto {
@@ -206,6 +210,10 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  productImagePath?: string | null;
 }
 
 export class CreateBomDto {

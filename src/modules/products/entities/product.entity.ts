@@ -86,6 +86,15 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  /** Relative path e.g. uploads/product-images/xxx.jpg (served under /uploads/) */
+  @Column({
+    name: 'product_image_path',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  productImagePath: string | null;
+
   @OneToMany(() => ProductBom, (bom) => bom.product)
   boms: ProductBom[];
 

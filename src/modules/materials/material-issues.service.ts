@@ -3,6 +3,9 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { BusinessException } from '../../shared/errors/business.exception';
+import { PcErrorCode } from '../../shared/errors/pc-error.codes';
+import { pcInsufficientStockMessage } from '../../shared/errors/pc-insufficient-stock.message';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { MaterialIssue } from './entities/material-issue.entity';
@@ -57,9 +60,14 @@ export class MaterialIssuesService {
           where: { materialId: item.materialId },
         });
         if (!stock || stock.availableQty < item.quantity) {
-          throw new BadRequestException(
-            `Insufficient stock for material ${material.matCode}`,
-          );
+          const available = stock?.availableQty ?? 0;
+          throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+            message: pcInsufficientStockMessage(
+              material.matCode,
+              available,
+              item.quantity,
+            ),
+          });
         }
       }
 
@@ -142,9 +150,14 @@ export class MaterialIssuesService {
           where: { materialId: bom.materialId },
         });
         if (!stock || stock.availableQty < requiredQty) {
-          throw new BadRequestException(
-            `Insufficient stock for material ${bom.material.matCode}`,
-          );
+          const available = stock?.availableQty ?? 0;
+          throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+            message: pcInsufficientStockMessage(
+              bom.material.matCode,
+              available,
+              requiredQty,
+            ),
+          });
         }
       }
 

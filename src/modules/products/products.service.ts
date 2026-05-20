@@ -313,6 +313,7 @@ export class ProductsService {
         loadingPointId: dto.loadingPointId,
         processLineId: dto.processLineId,
         isActive: dto.isActive ?? true,
+        productImagePath: dto.productImagePath?.trim() || null,
         createBy: user,
         updateBy: user,
       });
@@ -371,8 +372,12 @@ export class ProductsService {
   }
 
   async getBom(productId: number) {
-    const product = await this.findOne(productId);
-    return product.boms;
+    await this.findOne(productId);
+    return this.bomRepo.find({
+      where: { productId, isActive: true },
+      relations: ['material'],
+      order: { sequenceOrder: 'ASC', id: 'ASC' },
+    });
   }
 
   async addBomItems(productId: number, items: CreateBomDto[], user: string) {

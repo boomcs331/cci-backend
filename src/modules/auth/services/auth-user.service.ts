@@ -397,4 +397,38 @@ export class AuthUserService {
 
     return this.sanitizeUsers(users) as User[];
   }
+
+  /**
+   * ชื่อผู้ทำรายการ — จาก JWT (ถ้ามี) หรือ header x-user-id → lookup username ใน DB
+   * (apiFetch ส่ง x-user-id ไม่ได้ตั้ง req.user)
+   */
+  async resolveUsernameFromRequest(req: {
+    user?: { id?: string | number; username?: string };
+    headers?: Record<string, string | string[] | undefined>;
+  }): Promise<string> {
+    const direct = req.user?.username?.trim();
+    if (direct) return direct;
+
+    const rawUsername = req.headers?.['x-username'];
+    const headerUsername = Array.isArray(rawUsername)
+      ? rawUsername[0]
+      : rawUsername;
+    if (typeof headerUsername === 'string' && headerUsername.trim()) {
+      return headerUsername.trim();
+    }
+
+    const rawUserId = req.headers?.['x-user-id'];
+    const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
+    if (userId) {
+      try {
+        const user = await this.findUserById(String(userId));
+        const un = user.username?.trim();
+        if (un) return un;
+      } catch {
+        // user not found
+      }
+    }
+
+    return 'system';
+  }
 }

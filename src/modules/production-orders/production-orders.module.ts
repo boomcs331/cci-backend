@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductionOrdersController } from './production-orders.controller';
+import { ProductionProcessesController } from './production-processes.controller';
 import { ProductionOrdersService } from './production-orders.service';
+import { ProductionProcessesService } from './production-processes.service';
 import {
   ProductionOrder,
   ProductionLot,
@@ -34,8 +36,8 @@ import { AuditModule } from '../../core/audit/audit.module';
       ProductionPlanItem,
     ]),
   ],
-  controllers: [ProductionOrdersController],
-  providers: [ProductionOrdersService],
-  exports: [ProductionOrdersService],
+  controllers: [ProductionOrdersController, ProductionProcessesController],
+  providers: [ProductionOrdersService, ProductionProcessesService],
+  exports: [ProductionOrdersService, ProductionProcessesService],
 })
 export class ProductionOrdersModule {}

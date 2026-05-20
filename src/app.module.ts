@@ -11,6 +11,7 @@ import { ProductionPlansModule } from './modules/production-plans/production-pla
 import { ProductionOrdersModule } from './modules/production-orders/production-orders.module';
 import { AuditModule } from './core/audit/audit.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
+import { BusinessModule } from './business/business.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AiChatModule } from './modules/ai-chat/ai-chat.module';
     }),
     DatabaseModule,
     CommonModule,
+    BusinessModule,
     AuditModule,
     AuthModule,
     MaterialsModule,

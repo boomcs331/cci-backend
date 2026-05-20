@@ -1,5 +1,18 @@
-import { IsString, IsNumber, IsOptional, IsDateString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsDateString,
+  IsNotEmpty,
+} from 'class-validator';
+import { PC_ERROR_MESSAGES } from '../../../../shared/errors/pc-error.messages';
+import { PcErrorCode } from '../../../../shared/errors/pc-error.codes';
+import { IsPoNo } from '../../../../shared/validators/decorators/is-po-no.decorator';
+import { IsMfgDate } from '../../../../shared/validators/decorators/is-mfg-date.decorator';
+import { PoNoValidator } from '../../../../shared/validators/po-no.validator';
 
+/** Transport-layer DTO — structural checks only; rules live in business layer. */
 export class CreateReceivingDto {
   @IsNumber()
   materialId: number;
@@ -11,9 +24,11 @@ export class CreateReceivingDto {
   @IsNumber()
   supplierId?: number;
 
-  @IsOptional()
   @IsString()
-  poNo?: string;
+  @IsNotEmpty({ message: PC_ERROR_MESSAGES[PcErrorCode.PC_PO_NO_REQUIRED] })
+  @Transform(({ value }) => PoNoValidator.normalize(value))
+  @IsPoNo()
+  poNo: string;
 
   @IsOptional()
   @IsString()
@@ -27,9 +42,9 @@ export class CreateReceivingDto {
   @IsDateString()
   expiryDate?: string;
 
-  @IsOptional()
-  @IsDateString()
-  mfgDate?: string;
+  @IsString()
+  @IsMfgDate()
+  mfgDate: string;
 
   @IsOptional()
   @IsString()

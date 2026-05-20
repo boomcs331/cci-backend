@@ -2,7 +2,11 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  HttpStatus,
 } from '@nestjs/common';
+import { BusinessException } from '../../shared/errors/business.exception';
+import { PcErrorCode } from '../../shared/errors/pc-error.codes';
+import { pcInsufficientStockMessage } from '../../shared/errors/pc-insufficient-stock.message';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import {
@@ -545,9 +549,14 @@ export class MaterialsService {
       if (!stock) throw new NotFoundException('Stock record not found');
 
       if (stock.availableQty < dto.quantity) {
-        throw new ConflictException(
-          `Insufficient stock. Available: ${stock.availableQty}, Requested: ${dto.quantity}`,
-        );
+        throw BusinessException.fromCode(PcErrorCode.PC_INSUFFICIENT_STOCK, {
+          message: pcInsufficientStockMessage(
+            material.matCode,
+            stock.availableQty,
+            dto.quantity,
+          ),
+          status: HttpStatus.CONFLICT,
+        });
       }
 
       const newTotalQty = stock.totalQty - dto.quantity;
