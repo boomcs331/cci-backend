@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
+import { UserDepartment } from './user-department.entity';
 import { UserRoleAssignment } from './user-role-assignment.entity';
 
 @Entity({ schema: 'auth', name: 'departments' })
@@ -34,4 +35,7 @@ export class Department {
 
   @OneToMany(() => UserRoleAssignment, (assignment) => assignment.department)
   roleAssignments: UserRoleAssignment[];
+
+  @OneToMany(() => UserDepartment, (ud) => ud.department)
+  userDepartments: UserDepartment[];
 }

@@ -7,7 +7,14 @@ import {
 import { buildInventoryStyleQrCode } from '@app/common';
 import { ProductProductionStep } from '../products/entities/product-production-step.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager } from 'typeorm';
+import {
+  Repository,
+  DataSource,
+  EntityManager,
+  In,
+  Brackets,
+  SelectQueryBuilder,
+} from 'typeorm';
 import {
   ProductionOrder,
   ProductionLot,
@@ -119,17 +126,73 @@ export class ProductionOrdersService {
     );
   }
 
+  /** รหัสแผนกที่ใช้เทียบ allowed_department_codes (รองรับ WE↔WELDING, PD↔PRESS) */
+  private departmentCodesForGate(deptCode: string): string[] {
+    const trimmed = deptCode.trim();
+    const upper = trimmed.toUpperCase();
+    const codes = new Set<string>([trimmed, upper]);
+    if (upper === 'WE' || upper === 'WELDING') {
+      codes.add('WE');
+      codes.add('WELDING');
+    }
+    if (upper === 'PD' || upper === 'PRESS' || upper === 'PRESS_FIT') {
+      codes.add('PD');
+      codes.add('PRESS');
+      codes.add('PRESS_FIT');
+    }
+    return [...codes];
+  }
+
+  /** คำสั่งผลิตที่ยังเปิดงานได้ (รวม DRAFT — ล็อต QR มักพร้อมที่ขั้นแรกก่อนกด start order) */
+  private static readonly OPEN_ORDER_STATUSES = ['DRAFT', 'IN_PROGRESS'] as const;
+
+  private applyDeptProcessGate(
+    qb: SelectQueryBuilder<ProductionLot>,
+    gateCodes: string[],
+    processAlias = 'process',
+  ): void {
+    if (!gateCodes.length) {
+      qb.andWhere('1 = 0');
+      return;
+    }
+    qb.andWhere(
+      new Brackets((sub) => {
+        sub.where(`${processAlias}.allowedDepartmentCodes IS NULL`);
+        gateCodes.forEach((code, idx) => {
+          const param = `deptGate${idx}`;
+          sub.orWhere(
+            `:${param} = ANY(${processAlias}.allowedDepartmentCodes)`,
+            { [param]: code },
+          );
+        });
+      }),
+    );
+  }
+
+  private deptAllowedForProcess(
+    process: ProductionProcess | null | undefined,
+    gateCodes: string[],
+  ): boolean {
+    if (!process) return false;
+    const allowed = process.allowedDepartmentCodes;
+    if (!allowed?.length) return true;
+    if (!gateCodes.length) return false;
+    return allowed.some((a) =>
+      gateCodes.some(
+        (g) => g.toUpperCase() === String(a ?? '').trim().toUpperCase(),
+      ),
+    );
+  }
+
   private canUserActOnProcess(
     process: ProductionProcess,
     user: User | null,
     isGlobal: boolean,
   ): boolean {
     if (isGlobal) return true;
-    const allowed = process.allowedDepartmentCodes;
-    if (!allowed?.length) return true;
-    const code = user?.department?.code;
-    if (!code) return false;
-    return allowed.includes(code);
+    if (!user) return false;
+    const gateCodes = this.authUserService.expandedGateCodesForUser(user);
+    return this.deptAllowedForProcess(process, gateCodes);
   }
 
   private async resolveOrderedProcesses(
@@ -415,15 +478,164 @@ export class ProductionOrdersService {
     });
   }
 
-  async findAllOrders(page = 1, limit = 10) {
-    const [orders, total] = await this.orderRepo.findAndCount({
-      relations: ['product', 'lots'],
+  /** ล็อตที่แผนกนี้ต้องรับงาน (รอเริ่มหรือกำลังทำที่ขั้นปัจจุบัน) */
+  private lotIsDeptBacklog(lot: ProductionLot, gateCodes: string[]): boolean {
+    if (['SPLIT', 'COMPLETED', 'REJECTED'].includes(lot.status)) {
+      return false;
+    }
+    if (!['PENDING', 'IN_PROGRESS'].includes(lot.status)) {
+      return false;
+    }
+    return this.deptAllowedForProcess(lot.currentProcess, gateCodes);
+  }
+
+  private attachDeptBacklogSummary(
+    orders: ProductionOrder[],
+    gateCodes: string[],
+  ): Array<
+    ProductionOrder & {
+      deptBacklogLotCount: number;
+      deptBacklogProcessCodes: string[];
+    }
+  > {
+    return orders.map((order) => {
+      const matching = (order.lots ?? []).filter((lot) =>
+        this.lotIsDeptBacklog(lot, gateCodes),
+      );
+      const codes = [
+        ...new Set(
+          matching
+            .map((l) => l.currentProcess?.processCode)
+            .filter((c): c is string => Boolean(c)),
+        ),
+      ];
+      return Object.assign(order, {
+        deptBacklogLotCount: matching.length,
+        deptBacklogProcessCodes: codes,
+      });
+    });
+  }
+
+  async findAllOrders(
+    page = 1,
+    limit = 10,
+    userId?: string,
+    activeDepartmentId?: string,
+  ) {
+    const user = userId ? await this.authUserService.findUserById(userId) : null;
+    const isGlobal = this.userIsAdminGlobal(user);
+
+    if (isGlobal) {
+      const [orders, total] = await this.orderRepo.findAndCount({
+        relations: ['product', 'lots', 'lots.currentProcess'],
+        order: { createDate: 'DESC' },
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+
+      return {
+        orders,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 0,
+        departmentScope: null,
+      };
+    }
+
+    const scoped = this.authUserService.resolveProductionGateForActiveDepartment(
+      user,
+      activeDepartmentId,
+    );
+    const gateCodes = scoped.gateCodes;
+    const deptLabel = scoped.departmentCode;
+    const deptName = scoped.departmentName;
+
+    if (!gateCodes.length) {
+      return {
+        orders: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        departmentScope: {
+          departmentCode: null,
+          departmentName: null,
+          filtered: true,
+          message:
+            'ไม่พบแผนกของผู้ใช้ — ไม่สามารถแสดงรายการงานตามกระบวนการได้',
+        },
+      };
+    }
+
+    const idQb = this.lotRepo
+      .createQueryBuilder('lot')
+      .innerJoin('lot.order', 'order')
+      .leftJoin('lot.currentProcess', 'process')
+      .select('order.id', 'orderId')
+      .addSelect('MAX(order.createDate)', 'orderCreateDate')
+      .where('lot.status NOT IN (:...excluded)', {
+        excluded: ['SPLIT', 'COMPLETED', 'REJECTED'],
+      })
+      .andWhere('lot.status IN (:...active)', {
+        active: ['PENDING', 'IN_PROGRESS'],
+      })
+      .andWhere('order.status IN (:...openOrders)', {
+        openOrders: [...ProductionOrdersService.OPEN_ORDER_STATUSES],
+      })
+      .andWhere('process.id IS NOT NULL');
+    this.applyDeptProcessGate(idQb, gateCodes);
+    const idRows = await idQb
+      .groupBy('order.id')
+      .orderBy('MAX(order.createDate)', 'DESC')
+      .getRawMany<{ orderId: string; orderCreateDate: string }>();
+
+    const orderIds = idRows.map((r) => Number(r.orderId)).filter((id) => !Number.isNaN(id));
+    const total = orderIds.length;
+    const pageIds = orderIds.slice((page - 1) * limit, page * limit);
+
+    if (pageIds.length === 0) {
+      return {
+        orders: [],
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 0,
+        departmentScope: {
+          departmentCode: deptLabel,
+          departmentName: deptName,
+          filtered: true,
+          message: `แสดงเฉพาะคำสั่งผลิตที่มีล็อตคงค้างในกระบวนการของแผนก ${deptLabel}`,
+        },
+      };
+    }
+
+    const orders = await this.orderRepo.find({
+      where: { id: In(pageIds) },
+      relations: ['product', 'lots', 'lots.currentProcess'],
       order: { createDate: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
     });
 
-    return { orders, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const sorted = pageIds
+      .map((id) => orderById.get(id))
+      .filter((o): o is ProductionOrder => Boolean(o));
+
+    const withSummary = this.attachDeptBacklogSummary(sorted, gateCodes);
+
+    return {
+      orders: withSummary,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 0,
+      departmentScope: {
+        departmentCode: deptLabel,
+        departmentName: deptName,
+        filtered: true,
+        message: `แสดงเฉพาะคำสั่งผลิตที่มีล็อตคงค้างในกระบวนการของแผนก ${deptLabel}`,
+      },
+    };
   }
 
   async findOrderWithLots(id: number) {
@@ -481,6 +693,10 @@ export class ProductionOrdersService {
         relations: ['order'],
       });
       if (!lot) throw new NotFoundException('QR Code not found');
+      if (lot.order.status === 'DRAFT') {
+        lot.order.status = 'IN_PROGRESS';
+        await manager.save(lot.order);
+      }
       if (lot.status === 'SPLIT') {
         throw new BadRequestException(
           'This QR has been split and retired. Please scan a child lot QR.',
@@ -780,7 +996,108 @@ export class ProductionOrdersService {
       const childOrderLabelB = `${childOrderLabelBase}-S${String(splitRunB).padStart(2, '0')}`;
 
       const operator = await this.resolveOperatorLogin(dto.operator, user);
-      const reason = (dto.reason && dto.reason.trim()) || 'split lot';
+      const reason = dto.reason?.trim();
+      if (!reason) {
+        throw new BadRequestException('reason is required');
+      }
+
+      /** รอเริ่ม: จำนวนที่ปล่อยใช้ QR เดิมไปขั้นถัดไป — ส่วนที่เหลือได้ QR ใหม่ */
+      if (lot.status === 'PENDING' && moveReleasedToNextStep) {
+        const splitCountRaw = await manager
+          .createQueryBuilder(ProductionLot, 'lot')
+          .where('lot.parentLotId = :parentLotId', { parentLotId: lot.id })
+          .getCount();
+        const splitRunB = splitCountRaw + 1;
+        const childLotNoB = `${lot.lotNo}-S${String(splitRunB).padStart(2, '0')}`;
+        const childOrderLabelBase = lot.orderLotLabel ?? lot.lotNo;
+        const childOrderLabelB = `${childOrderLabelBase}-S${String(splitRunB).padStart(2, '0')}`;
+
+        lot.quantity = releaseQty;
+        lot.currentProcessId = nextProcessId;
+        lot.status = 'IN_PROGRESS';
+        if (!lot.orderNoRef) {
+          lot.orderNoRef = lot.order?.orderNo ?? lot.orderNoRef;
+        }
+
+        if (currentProcessId) {
+          const completeRow = manager.create(ProductionLotTracking, {
+            lotId: lot.id,
+            processId: currentProcessId,
+            startTime: new Date(),
+            endTime: new Date(),
+            status: 'COMPLETED',
+            operator,
+            remarks: reason,
+          });
+          await manager.save(completeRow);
+        }
+
+        if (nextProcessId) {
+          const nextStepRow = manager.create(ProductionLotTracking, {
+            lotId: lot.id,
+            processId: nextProcessId,
+            startTime: new Date(),
+            status: 'IN_PROGRESS',
+            operator,
+            remarks: reason,
+          });
+          await manager.save(nextStepRow);
+        }
+
+        const remaining = manager.create(ProductionLot, {
+          orderId: lot.orderId,
+          lotNo: childLotNoB,
+          lotPdNo: lot.lotPdNo,
+          orderLotLabel: childOrderLabelB,
+          orderNoRef: lot.orderNoRef ?? lot.order?.orderNo ?? null,
+          qrCode: buildInventoryStyleQrCode(childLotNoB),
+          sequenceNo: maxSeq + 1,
+          quantity: remainingQty,
+          parentLotId: lot.id,
+          splitReason: reason,
+          currentProcessId: currentProcessId,
+          status: 'PENDING',
+        });
+        const savedSource = await manager.save(lot);
+        const savedRemaining = await manager.save(remaining);
+
+        return {
+          sourceLot: {
+            id: lot.id,
+            lotNo: lot.lotNo,
+            orderNoRef: lot.orderNoRef ?? lot.order?.orderNo ?? null,
+            qrCode: lot.qrCode,
+            quantity: sourceQty,
+            status: 'IN_PROGRESS',
+            retired: false,
+            keptOriginalQr: true,
+          },
+          children: [
+            {
+              id: savedSource.id,
+              lotNo: savedSource.lotNo,
+              orderNoRef:
+                savedSource.orderNoRef ?? lot.orderNoRef ?? lot.order?.orderNo ?? null,
+              qrCode: savedSource.qrCode,
+              quantity: Number(savedSource.quantity),
+              status: savedSource.status,
+              currentProcessId: savedSource.currentProcessId ?? null,
+              keptOriginalQr: true,
+            },
+            {
+              id: savedRemaining.id,
+              lotNo: savedRemaining.lotNo,
+              orderNoRef:
+                savedRemaining.orderNoRef ?? lot.orderNoRef ?? lot.order?.orderNo ?? null,
+              qrCode: savedRemaining.qrCode,
+              quantity: Number(savedRemaining.quantity),
+              status: savedRemaining.status,
+              currentProcessId: savedRemaining.currentProcessId ?? null,
+              keptOriginalQr: false,
+            },
+          ],
+        };
+      }
 
       const released = manager.create(ProductionLot, {
         orderId: lot.orderId,
@@ -823,7 +1140,7 @@ export class ProductionOrdersService {
             endTime: new Date(),
             status: 'COMPLETED',
             operator,
-            remarks: `auto-completed by split from ${lot.lotNo}`,
+            remarks: reason,
           });
           await manager.save(completeRow);
         } else if (lot.status === 'IN_PROGRESS') {
@@ -1035,12 +1352,21 @@ export class ProductionOrdersService {
     };
   }
 
-  async getInProgressLotsForMyDept(userId?: string) {
+  async getInProgressLotsForMyDept(
+    userId?: string,
+    activeDepartmentId?: string,
+  ) {
     const user = userId ? await this.authUserService.findUserById(userId) : null;
     const isGlobal = this.userIsAdminGlobal(user);
 
-    const deptId = user?.department?.id ? String(user.department.id) : undefined;
-    const deptCode = user?.department?.code ?? null;
+    const gateCodes = isGlobal
+      ? user
+        ? this.authUserService.expandedGateCodesForUser(user)
+        : []
+      : this.authUserService.resolveProductionGateForActiveDepartment(
+          user,
+          activeDepartmentId,
+        ).gateCodes;
 
     // For non-admin, we gate visibility by permissions:
     // - IN_PROGRESS list is part of the QR station workflow, so users must have either read or update.
@@ -1048,14 +1374,12 @@ export class ProductionOrdersService {
       ? await this.authUserService.hasPermission(
           String(userId),
           'production_orders.read',
-          deptId,
         )
       : false;
     const canUpdate = userId
       ? await this.authUserService.hasPermission(
           String(userId),
           'production_orders.update',
-          deptId,
         )
       : false;
 
@@ -1063,14 +1387,14 @@ export class ProductionOrdersService {
       return [];
     }
 
-    // Use production_lots as the source of truth.
-    // Admin: show lots for *all statuses*.
-    // Non-admin: show only lots that are IN_PROGRESS, and match department gates (allowedDepartmentCodes) for the current step.
+    // ล็อตคงค้างที่ขั้นปัจจุบัน — สอดคล้อง findAllOrders / lotIsDeptBacklog
+    // Admin: ทุกสถานะที่ยังไม่ปิดงาน
+    // Non-admin: PENDING หรือ IN_PROGRESS ที่ currentProcess เปิดให้แผนกนี้ (รวมรอเริ่ม WELDING)
     const qb = this.lotRepo
       .createQueryBuilder('lot')
       .innerJoin('lot.order', 'order')
       .innerJoin('order.product', 'product')
-      .leftJoin('lot.currentProcess', 'process')
+      .innerJoin('lot.currentProcess', 'process')
       .select([
         // Quote aliases so Postgres preserves camelCase in raw results.
         'lot.lotNo AS "lotNo"',
@@ -1087,17 +1411,21 @@ export class ProductionOrdersService {
       .orderBy('lot.createDate', 'DESC');
 
     if (isGlobal) {
-      qb.where('lot.status != :splitStatus', { splitStatus: 'SPLIT' });
+      qb.where('lot.status NOT IN (:...excluded)', {
+        excluded: ['SPLIT', 'COMPLETED', 'REJECTED'],
+      });
     } else {
-      qb.where('lot.status = :status', { status: 'IN_PROGRESS' });
-      // If user has no department, they can't be matched to department-gated processes.
-      if (!deptCode) {
+      if (!gateCodes.length) {
         return [];
       }
-      qb.andWhere(
-        '(process.id IS NULL OR process.allowedDepartmentCodes IS NULL OR :deptCode = ANY(process.allowedDepartmentCodes))',
-        { deptCode },
-      );
+      qb
+        .where('lot.status IN (:...active)', {
+          active: ['PENDING', 'IN_PROGRESS'],
+        })
+        .andWhere('order.status IN (:...openOrders)', {
+          openOrders: [...ProductionOrdersService.OPEN_ORDER_STATUSES],
+        });
+      this.applyDeptProcessGate(qb, gateCodes);
     }
 
     const rows = (await qb.getRawMany()) as Array<{

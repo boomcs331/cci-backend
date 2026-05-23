@@ -30,6 +30,10 @@ export class UpdateUserDto {
   departmentId?: string;
 
   @IsOptional()
+  @IsString({ each: true })
+  departmentIds?: string[];
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 

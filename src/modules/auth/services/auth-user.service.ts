@@ -14,12 +14,15 @@ import { Department } from '../entities/department.entity';
 import { Role, RoleScopeType } from '../entities/role.entity';
 import { User } from '../entities/user.entity';
 import { UserRoleAssignment } from '../entities/user-role-assignment.entity';
+import { UserDepartment } from '../entities/user-department.entity';
 import { throwMappedUniqueConstraintError } from '../utils/auth-error.util';
 
 @Injectable()
 export class AuthUserService {
   private readonly userRelations = [
     'department',
+    'userDepartments',
+    'userDepartments.department',
     'roles',
     'roles.permissions',
     'roleAssignments',
@@ -37,13 +40,136 @@ export class AuthUserService {
     private readonly departmentRepository: Repository<Department>,
     @InjectRepository(UserRoleAssignment)
     private readonly userRoleAssignmentRepository: Repository<UserRoleAssignment>,
+    @InjectRepository(UserDepartment)
+    private readonly userDepartmentRepository: Repository<UserDepartment>,
   ) {}
+
+  /** รวม department id ทั้งหมดของผู้ใช้ */
+  collectUserDepartmentIds(user: User): Set<string> {
+    const ids = new Set<string>();
+    if (user.departmentId) ids.add(String(user.departmentId));
+    user.userDepartments?.forEach((ud) => {
+      if (ud.departmentId) ids.add(String(ud.departmentId));
+    });
+    return ids;
+  }
+
+  getDepartmentsForUser(user: User): Department[] {
+    const map = new Map<string, Department>();
+    if (user.department) map.set(String(user.department.id), user.department);
+    user.userDepartments?.forEach((ud) => {
+      if (ud.department) map.set(String(ud.department.id), ud.department);
+    });
+    const list = [...map.values()];
+    const primaryId = user.departmentId ? String(user.departmentId) : null;
+    list.sort((a, b) => {
+      if (primaryId && String(a.id) === primaryId) return -1;
+      if (primaryId && String(b.id) === primaryId) return 1;
+      return (a.code ?? '').localeCompare(b.code ?? '');
+    });
+    return list;
+  }
+
+  getUserDepartmentCodes(user: User): string[] {
+    return this.getDepartmentsForUser(user)
+      .map((d) => d.code)
+      .filter((c): c is string => Boolean(c?.trim()));
+  }
+
+  async getUserDepartmentCodesByUserId(userId: string): Promise<string[]> {
+    const user = await this.findUserById(userId);
+    return this.getUserDepartmentCodes(user);
+  }
+
+  private expandDepartmentGateCodes(deptCode: string): string[] {
+    const trimmed = deptCode.trim();
+    const upper = trimmed.toUpperCase();
+    const codes = new Set([trimmed, upper]);
+    if (upper === 'WE' || upper === 'WELDING') {
+      codes.add('WE');
+      codes.add('WELDING');
+    }
+    if (upper === 'PD' || upper === 'PRESS' || upper === 'PRESS_FIT') {
+      codes.add('PD');
+      codes.add('PRESS');
+      codes.add('PRESS_FIT');
+    }
+    return [...codes];
+  }
+
+  /** รวม gate codes จากทุกแผนกของผู้ใช้ (สำหรับ production process filter) */
+  expandedGateCodesForUser(user: User | null): string[] {
+    if (!user) return [];
+    const merged = new Set<string>();
+    for (const code of this.getUserDepartmentCodes(user)) {
+      for (const g of this.expandDepartmentGateCodes(code)) {
+        merged.add(g);
+      }
+    }
+    return [...merged];
+  }
+
+  /** gate codes จากแผนกที่เลือกใช้งาน (x-department-id) — ไม่รวมแผนกอื่น */
+  resolveProductionGateForActiveDepartment(
+    user: User | null,
+    activeDepartmentId?: string,
+  ): { gateCodes: string[]; departmentCode: string | null; departmentName: string | null } {
+    if (!user) {
+      return { gateCodes: [], departmentCode: null, departmentName: null };
+    }
+
+    const depts = this.getDepartmentsForUser(user);
+    let dept = activeDepartmentId
+      ? depts.find((d) => String(d.id) === String(activeDepartmentId))
+      : undefined;
+    if (!dept && user.department) {
+      dept = user.department;
+    }
+
+    if (!dept?.code?.trim()) {
+      return { gateCodes: [], departmentCode: null, departmentName: null };
+    }
+
+    return {
+      gateCodes: this.expandDepartmentGateCodes(dept.code),
+      departmentCode: dept.code,
+      departmentName: dept.name ?? null,
+    };
+  }
+
+  private async syncUserDepartments(
+    userId: string,
+    departmentIds: string[] | undefined,
+    primaryDepartmentId?: string | null,
+  ): Promise<void> {
+    await this.userDepartmentRepository.delete({ userId });
+
+    const unique = [...new Set((departmentIds ?? []).filter(Boolean))];
+    if (!unique.length) return;
+
+    const primary =
+      primaryDepartmentId && unique.includes(primaryDepartmentId)
+        ? primaryDepartmentId
+        : unique[0];
+
+    for (const departmentId of unique) {
+      await this.validateDepartment(departmentId);
+      await this.userDepartmentRepository.save(
+        this.userDepartmentRepository.create({
+          userId,
+          departmentId,
+          isPrimary: String(departmentId) === String(primary),
+        }),
+      );
+    }
+  }
 
   private getUniquePermissionCodes(
     user: User,
-    departmentId?: string,
+    _departmentId?: string,
   ): string[] {
     const permissionSet = new Set<string>();
+    const userDeptIds = this.collectUserDepartmentIds(user);
 
     user.roles?.forEach((role) => {
       role.permissions?.forEach((permission) => {
@@ -52,20 +178,23 @@ export class AuthUserService {
     });
 
     user.roleAssignments?.forEach((assignment) => {
-      const isGlobalRole = assignment.role?.scopeType === RoleScopeType.GLOBAL;
-      const isMatchingDepartment = Boolean(
-        departmentId &&
-        assignment.departmentId &&
-        assignment.departmentId === departmentId,
-      );
+      const role = assignment.role;
+      if (!role) return;
 
-      if (departmentId && !isGlobalRole && !isMatchingDepartment) {
+      if (role.scopeType === RoleScopeType.GLOBAL) {
+        role.permissions?.forEach((permission) => {
+          permissionSet.add(permission.code);
+        });
         return;
       }
 
-      assignment.role?.permissions?.forEach((permission) => {
-        permissionSet.add(permission.code);
-      });
+      const assignDeptId =
+        assignment.departmentId ?? assignment.department?.id ?? null;
+      if (assignDeptId && userDeptIds.has(String(assignDeptId))) {
+        role.permissions?.forEach((permission) => {
+          permissionSet.add(permission.code);
+        });
+      }
     });
 
     return [...permissionSet];
@@ -150,8 +279,15 @@ export class AuthUserService {
   }
 
   async createUser(createUserDto: CreateUserDto): Promise<User> {
-    const { username, email, password, roleIds, departmentId, ...userData } =
-      createUserDto;
+    const {
+      username,
+      email,
+      password,
+      roleIds,
+      departmentId,
+      departmentIds,
+      ...userData
+    } = createUserDto;
 
     const existingUser = await this.userRepository.findOne({
       where: [{ username }, { email }],
@@ -160,14 +296,17 @@ export class AuthUserService {
       throw new ConflictException('Username or email already exists');
     }
 
-    await this.validateDepartment(departmentId);
+    const deptList =
+      departmentIds?.length ? departmentIds : departmentId ? [departmentId] : [];
+    const primaryDept = departmentId ?? deptList[0] ?? null;
+    if (primaryDept) await this.validateDepartment(primaryDept);
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = this.userRepository.create({
       username,
       email,
       passwordHash,
-      departmentId: departmentId ?? null,
+      departmentId: primaryDept,
       ...userData,
     });
 
@@ -176,7 +315,9 @@ export class AuthUserService {
     }
 
     const savedUser = await this.userRepository.save(user);
-    return this.findUserById(savedUser.id);
+    await this.syncUserDepartments(savedUser.id, deptList, primaryDept);
+    const full = await this.findUserById(savedUser.id);
+    return { ...full, departments: this.getDepartmentsForUser(full) } as User;
   }
 
   async findUserById(id: string): Promise<User> {
@@ -187,7 +328,10 @@ export class AuthUserService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    return user;
+    return {
+      ...user,
+      departments: this.getDepartmentsForUser(user),
+    } as User;
   }
 
   async findUserByEmail(email: string): Promise<User> {
@@ -235,6 +379,8 @@ export class AuthUserService {
     const users = await this.userRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')
+      .leftJoinAndSelect('user.userDepartments', 'userDepartments')
+      .leftJoinAndSelect('userDepartments.department', 'userDepartmentsDept')
       .leftJoinAndSelect('user.roles', 'roles')
       .leftJoinAndSelect('roles.permissions', 'permissions')
       .leftJoinAndSelect('user.roleAssignments', 'roleAssignments')
@@ -247,8 +393,14 @@ export class AuthUserService {
   }
 
   async updateUser(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-    const { roleIds, departmentId, ...updateData } = updateUserDto;
-    const user = await this.findUserById(id);
+    const { roleIds, departmentId, departmentIds, ...updateData } =
+      updateUserDto;
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: [...this.userRelations],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
     Object.assign(user, {
       ...updateData,
       ...(departmentId !== undefined
@@ -267,8 +419,24 @@ export class AuthUserService {
       await this.validateDepartment(departmentId || undefined);
     }
 
+    const deptList =
+      departmentIds !== undefined
+        ? departmentIds
+        : departmentId !== undefined
+          ? departmentId
+            ? [departmentId]
+            : []
+          : undefined;
+    const primaryDept =
+      departmentId !== undefined
+        ? departmentId || null
+        : user.departmentId ?? null;
+
     try {
       await this.userRepository.save(user);
+      if (deptList !== undefined) {
+        await this.syncUserDepartments(id, deptList, primaryDept);
+      }
       const updatedUser = await this.findUserById(id);
       return this.sanitizeUser(updatedUser) as User;
     } catch (error) {

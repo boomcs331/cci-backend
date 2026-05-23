@@ -13,6 +13,7 @@ import {
 import { Role } from './role.entity';
 import { Department } from './department.entity';
 import { UserRoleAssignment } from './user-role-assignment.entity';
+import { UserDepartment } from './user-department.entity';
 
 @Entity({ schema: 'auth', name: 'users' })
 export class User {
@@ -66,4 +67,7 @@ export class User {
 
   @OneToMany(() => UserRoleAssignment, (assignment) => assignment.user)
   roleAssignments: UserRoleAssignment[];
+
+  @OneToMany(() => UserDepartment, (ud) => ud.user)
+  userDepartments: UserDepartment[];
 }

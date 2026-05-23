@@ -39,6 +39,11 @@ export class CreateUserDto {
   @IsString()
   departmentId?: string;
 
+  /** แผนกทั้งหมดของผู้ใช้ — departmentId เป็นแผนกหลัก (ถ้ามี) */
+  @IsOptional()
+  @IsString({ each: true })
+  departmentIds?: string[];
+
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;

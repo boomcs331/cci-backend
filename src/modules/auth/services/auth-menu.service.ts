@@ -54,13 +54,14 @@ export class AuthMenuService {
       }),
     ]);
 
-    const userDepartmentCode = user.department?.code ?? undefined;
+    const userDepartmentCodes =
+      this.authUserService.getUserDepartmentCodes(user);
     const isAdmin = this.isGlobalAdmin(user);
     const visibleRows = menuRows.filter((menu) =>
       this.canAccessMenu(menu, {
         isAdmin,
         permissions,
-        userDepartmentCode,
+        userDepartmentCodes,
       }),
     );
 
@@ -223,12 +224,43 @@ export class AuthMenuService {
     return pruneEmptyGroups(rootNodes);
   }
 
+  /** WE ↔ WELDING, PD ↔ PRESS (สอดคล้อง production process gates) */
+  private departmentMatchesAllowed(
+    userDepartmentCode: string | undefined,
+    allowedDepartments: string[],
+  ): boolean {
+    if (!userDepartmentCode) return false;
+    const gate = this.expandDepartmentGateCodes(userDepartmentCode);
+    return allowedDepartments.some((allowed) =>
+      gate.some(
+        (g) =>
+          g.toUpperCase() === String(allowed ?? '').trim().toUpperCase(),
+      ),
+    );
+  }
+
+  private expandDepartmentGateCodes(deptCode: string): string[] {
+    const trimmed = deptCode.trim();
+    const upper = trimmed.toUpperCase();
+    const codes = new Set([trimmed, upper]);
+    if (upper === 'WE' || upper === 'WELDING') {
+      codes.add('WE');
+      codes.add('WELDING');
+    }
+    if (upper === 'PD' || upper === 'PRESS' || upper === 'PRESS_FIT') {
+      codes.add('PD');
+      codes.add('PRESS');
+      codes.add('PRESS_FIT');
+    }
+    return [...codes];
+  }
+
   private canAccessMenu(
     menu: Menu,
     context: {
       isAdmin: boolean;
       permissions: string[];
-      userDepartmentCode?: string;
+      userDepartmentCodes: string[];
     },
   ): boolean {
     if (context.isAdmin) {
@@ -239,13 +271,11 @@ export class AuthMenuService {
       return false;
     }
 
-    if (menu.allowedDepartments && menu.allowedDepartments.length > 0) {
-      if (
-        !context.userDepartmentCode ||
-        !menu.allowedDepartments.includes(context.userDepartmentCode)
-      ) {
-        return false;
-      }
+    if (menu.allowedDepartments?.length) {
+      const ok = context.userDepartmentCodes.some((code) =>
+        this.departmentMatchesAllowed(code, menu.allowedDepartments!),
+      );
+      if (!ok) return false;
     }
 
     if (!menu.permissionCodes || menu.permissionCodes.length === 0) {

@@ -9,8 +9,11 @@ import {
   Patch,
   Post,
   Put,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { RequireAdminGlobal } from '../decorators/require-admin-global.decorator';
+import { AdminGlobalGuard } from '../guards/admin-global.guard';
 import { AuthService } from '../auth.service';
 import { AssignPermissionsDto } from '../dto/assign-permissions.dto';
 import { CreateRoleDto } from '../dto/create-role.dto';
@@ -19,6 +22,8 @@ import { AuthSanitizeUserInterceptor } from '../interceptors/auth-sanitize-user.
 import { withCollection, withMessage } from '../utils/auth-response.util';
 
 @Controller('auth')
+@UseGuards(AdminGlobalGuard)
+@RequireAdminGlobal()
 @UseInterceptors(AuthSanitizeUserInterceptor)
 export class AuthRolesController {
   constructor(private readonly authService: AuthService) {}

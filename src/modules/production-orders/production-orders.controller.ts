@@ -34,16 +34,24 @@ export class ProductionOrdersController {
 
   @Get()
   @RequirePermissions('production_orders.read')
-  findAll(@Query('page') page = 1, @Query('limit') limit = 10) {
-    return this.service.findAllOrders(+page, +limit);
+  findAll(
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-department-id') departmentId?: string,
+  ) {
+    return this.service.findAllOrders(+page, +limit, userId, departmentId);
   }
 
   /** Dept dashboard: lots currently IN_PROGRESS for the user's department */
   @Get('in-progress/my-dept')
   @PermissionMatch('any')
   @RequirePermissions('production_orders.read', 'production_orders.update')
-  getMyDeptInProgress(@Headers('x-user-id') userId?: string) {
-    return this.service.getInProgressLotsForMyDept(userId);
+  getMyDeptInProgress(
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-department-id') departmentId?: string,
+  ) {
+    return this.service.getInProgressLotsForMyDept(userId, departmentId);
   }
 
   /** QR station: next step, department gates, flags for start/complete */

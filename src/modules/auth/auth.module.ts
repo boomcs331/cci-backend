@@ -14,6 +14,7 @@ import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 import { Department } from './entities/department.entity';
 import { UserRoleAssignment } from './entities/user-role-assignment.entity';
+import { UserDepartment } from './entities/user-department.entity';
 import { Menu } from './entities/menu.entity';
 import { AuthLoggerMiddleware } from './middleware/auth-logger.middleware';
 import { AuthSanitizeUserInterceptor } from './interceptors/auth-sanitize-user.interceptor';
@@ -23,6 +24,7 @@ import { AuthRbacService } from './services/auth-rbac.service';
 import { AuthMenuService } from './services/auth-menu.service';
 import { ApiLog, AuthLog } from '../../core/audit/entities';
 import { PermissionGuard } from './guards/permission.guard';
+import { AdminGlobalGuard } from './guards/admin-global.guard';
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { PermissionGuard } from './guards/permission.guard';
       Permission,
       Department,
       UserRoleAssignment,
+      UserDepartment,
       Menu,
       AuthLog,
       ApiLog,
@@ -52,6 +55,7 @@ import { PermissionGuard } from './guards/permission.guard';
     AuthUserService,
     AuthRbacService,
     AuthMenuService,
+    AdminGlobalGuard,
     {
       provide: APP_GUARD,
       useClass: PermissionGuard,

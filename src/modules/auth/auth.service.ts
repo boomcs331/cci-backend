@@ -58,16 +58,13 @@ export class AuthService {
   ): Promise<{ user: User; permissions: string[]; menus: MenuNode[] }> {
     const { username, password } = loginDto;
     const user = await this.validateUser(username, password);
+    const fullUser = await this.authUserService.findUserById(user.id);
     const permissions = await this.authUserService.getUserPermissions(
       user.id,
-      user.departmentId ?? undefined,
     );
-    const menus = await this.authMenuService.getMenuForUser(
-      user.id,
-      user.departmentId ?? undefined,
-    );
+    const menus = await this.authMenuService.getMenuForUser(user.id);
 
-    return { user, permissions, menus };
+    return { user: fullUser, permissions, menus };
   }
 
   async getNavigationMenu(
@@ -294,5 +291,17 @@ export class AuthService {
 
   async deleteDepartment(id: string): Promise<void> {
     return this.authRbacService.deleteDepartment(id);
+  }
+
+  async isGlobalAdminUser(userId: string): Promise<boolean> {
+    const user = await this.findUserById(userId);
+    if (user.roles?.some((role) => role.code === 'ADMIN_GLOBAL')) {
+      return true;
+    }
+    return (
+      user.roleAssignments?.some(
+        (assignment) => assignment.role?.code === 'ADMIN_GLOBAL',
+      ) ?? false
+    );
   }
 }
