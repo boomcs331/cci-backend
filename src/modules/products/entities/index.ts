@@ -11,3 +11,5 @@ export { ProductProcessLine } from './product-process-line.entity';
 export { ProductProductionStep } from './product-production-step.entity';
 export { ProductsStock } from './products-stock.entity';
 export { ProductSalesReservation } from './product-sales-reservation.entity';
+export { ProductFgLot } from './product-fg-lot.entity';
+export { ProductFgLotMovement } from './product-fg-lot-movement.entity';

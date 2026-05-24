@@ -5,11 +5,39 @@ import {
   RequirePermissions,
 } from '../auth/decorators/require-permissions.decorator';
 import { ProductStockService } from './product-stock.service';
+import { ProductFgLotService } from './product-fg-lot.service';
 import { CreateProductSalesReservationDto } from './dto/product-sales-reservation.dto';
 
 @Controller('products')
 export class ProductInventoryController {
-  constructor(private readonly productStockService: ProductStockService) {}
+  constructor(
+    private readonly productStockService: ProductStockService,
+    private readonly productFgLotService: ProductFgLotService,
+  ) {}
+
+  @Get('reports/fg-lot-trace')
+  @RequirePermissions('products.stock.read')
+  async getFgLotTraceReport(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('orderNo') orderNo?: string,
+    @Query('lotSearch') lotSearch?: string,
+    @Query('productId') productId?: string,
+    @Query('status') status?: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 30,
+  ) {
+    return this.productFgLotService.getFgLotTraceReport({
+      startDate,
+      endDate,
+      orderNo,
+      lotSearch,
+      productId: productId ? +productId : undefined,
+      status,
+      page: +page,
+      limit: +limit,
+    });
+  }
 
   @Get('stock/alerts')
   @RequirePermissions('products.stock.read')
@@ -78,8 +106,15 @@ export class ProductInventoryController {
 
   @Post('sales-reservations/:id/fulfill')
   @RequirePermissions('products.sales.reserve')
-  async fulfill(@Param('id') id: string) {
-    const row = await this.productStockService.fulfillSalesReservation(id);
+  async fulfill(
+    @Param('id') id: string,
+    @Request() req: { user?: { username?: string } },
+  ) {
+    const username = req.user?.username ?? 'system';
+    const row = await this.productStockService.fulfillSalesReservation(
+      id,
+      username,
+    );
     return ResponseHelper.success(row, 'ตัดขายสำเร็จ — หักจากสต็อกรวมและจองแล้ว');
   }
 }

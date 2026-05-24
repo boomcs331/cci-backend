@@ -8,8 +8,11 @@ import {
   Param,
   Post,
   Put,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { RequireAdminGlobal } from '../decorators/require-admin-global.decorator';
+import { AdminGlobalGuard } from '../guards/admin-global.guard';
 import { AuthService } from '../auth.service';
 import { CreateDepartmentDto } from '../dto/create-department.dto';
 import { UpdateDepartmentDto } from '../dto/update-department.dto';
@@ -22,6 +25,8 @@ export class AuthDepartmentsController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('departments')
+  @UseGuards(AdminGlobalGuard)
+  @RequireAdminGlobal()
   async createDepartment(@Body() createDepartmentDto: CreateDepartmentDto) {
     const department =
       await this.authService.createDepartment(createDepartmentDto);
@@ -44,6 +49,8 @@ export class AuthDepartmentsController {
   }
 
   @Put('departments/:id')
+  @UseGuards(AdminGlobalGuard)
+  @RequireAdminGlobal()
   async updateDepartment(
     @Param('id') id: string,
     @Body() updateDepartmentDto: UpdateDepartmentDto,
@@ -61,6 +68,8 @@ export class AuthDepartmentsController {
 
   @Delete('departments/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(AdminGlobalGuard)
+  @RequireAdminGlobal()
   async deleteDepartment(@Param('id') id: string) {
     await this.authService.deleteDepartment(id);
     return { message: 'Department deleted successfully' };

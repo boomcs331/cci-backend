@@ -16,6 +16,7 @@ import { User } from '../entities/user.entity';
 import { UserRoleAssignment } from '../entities/user-role-assignment.entity';
 import { UserDepartment } from '../entities/user-department.entity';
 import { throwMappedUniqueConstraintError } from '../utils/auth-error.util';
+import { userSatisfiesPermission } from '../constants/permission-expand.util';
 
 @Injectable()
 export class AuthUserService {
@@ -520,7 +521,7 @@ export class AuthUserService {
   ): Promise<boolean> {
     const user = await this.findUserById(userId);
     const permissions = this.getUniquePermissionCodes(user, departmentId);
-    return permissions.includes(permissionCode);
+    return userSatisfiesPermission(permissions, permissionCode);
   }
 
   async getUserPermissions(

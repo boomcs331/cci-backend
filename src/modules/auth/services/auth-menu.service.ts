@@ -1,6 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { expandEffectivePermissions } from '../constants/permission-expand.util';
+import {
+  isPcOnlyMenu,
+  userHasAssignedPcPermission,
+} from '../constants/pc-menu-access.util';
 import { AuthUserService } from './auth-user.service';
 import { Menu } from '../entities/menu.entity';
 import { CreateMenuDto } from '../dto/create-menu.dto';
@@ -252,6 +257,10 @@ export class AuthMenuService {
       codes.add('PRESS');
       codes.add('PRESS_FIT');
     }
+    if (upper === 'PC') {
+      codes.add('PC');
+      codes.add('PD');
+    }
     return [...codes];
   }
 
@@ -271,6 +280,13 @@ export class AuthMenuService {
       return false;
     }
 
+    if (
+      isPcOnlyMenu(menu.code, menu.path) &&
+      !userHasAssignedPcPermission(context.permissions)
+    ) {
+      return false;
+    }
+
     if (menu.allowedDepartments?.length) {
       const ok = context.userDepartmentCodes.some((code) =>
         this.departmentMatchesAllowed(code, menu.allowedDepartments!),
@@ -282,15 +298,13 @@ export class AuthMenuService {
       return true;
     }
 
+    const effective = expandEffectivePermissions(context.permissions);
+
     if (menu.permissionMatch === 'any') {
-      return menu.permissionCodes.some((code) =>
-        context.permissions.includes(code),
-      );
+      return menu.permissionCodes.some((code) => effective.has(code));
     }
 
-    return menu.permissionCodes.every((code) =>
-      context.permissions.includes(code),
-    );
+    return menu.permissionCodes.every((code) => effective.has(code));
   }
 
   private isGlobalAdmin(

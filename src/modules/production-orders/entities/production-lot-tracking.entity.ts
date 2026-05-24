@@ -32,6 +32,26 @@ export class ProductionLotTracking {
   @Column({ nullable: true })
   operator: string;
 
+  /** จำนวนรับเข้าขั้นตอนนี้ */
+  @Column({
+    name: 'quantity_in',
+    type: 'decimal',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
+  quantityIn?: number | null;
+
+  /** จำนวนจ่ายออกจากขั้นตอนนี้ */
+  @Column({
+    name: 'quantity_out',
+    type: 'decimal',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
+  quantityOut?: number | null;
+
   @Column({ type: 'text', nullable: true })
   remarks?: string;
 

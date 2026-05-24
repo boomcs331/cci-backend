@@ -4,11 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductsStock } from './entities/products-stock.entity';
 import { ProductSalesReservation } from './entities/product-sales-reservation.entity';
 import { CreateProductSalesReservationDto } from './dto/product-sales-reservation.dto';
+import {
+  FgLotProductionSource,
+  ProductFgLotService,
+} from './product-fg-lot.service';
 
 @Injectable()
 export class ProductStockService {
@@ -19,6 +23,8 @@ export class ProductStockService {
     private readonly stockRepo: Repository<ProductsStock>,
     @InjectRepository(ProductSalesReservation)
     private readonly salesResRepo: Repository<ProductSalesReservation>,
+    private readonly fgLotService: ProductFgLotService,
+    private readonly dataSource: DataSource,
   ) {}
 
   private num(v: string | number | undefined | null): number {
@@ -79,9 +85,19 @@ export class ProductStockService {
     manager: EntityManager,
     productId: number,
     quantity: number,
+    source?: FgLotProductionSource,
   ): Promise<void> {
     const q = Number(quantity);
     if (!Number.isFinite(q) || q <= 0) return;
+
+    if (source) {
+      await this.fgLotService.receiveFromProductionLot(
+        manager,
+        productId,
+        q,
+        source,
+      );
+    }
 
     let stock = await manager.findOne(ProductsStock, { where: { productId } });
     if (!stock) {
@@ -278,30 +294,41 @@ export class ProductStockService {
     return this.salesResRepo.save(res);
   }
 
-  async fulfillSalesReservation(id: string) {
-    const res = await this.salesResRepo.findOne({ where: { id } });
-    if (!res) throw new NotFoundException('Reservation not found');
-    if (res.status !== 'ACTIVE') {
-      throw new BadRequestException('จองนี้ไม่สามารถตัดขายได้ (สถานะไม่ใช่ ACTIVE)');
-    }
+  async fulfillSalesReservation(id: string, username = 'system') {
+    return this.dataSource.transaction(async (manager) => {
+      const res = await manager.findOne(ProductSalesReservation, { where: { id } });
+      if (!res) throw new NotFoundException('Reservation not found');
+      if (res.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          'จองนี้ไม่สามารถตัดขายได้ (สถานะไม่ใช่ ACTIVE)',
+        );
+      }
 
-    const stock = await this.stockRepo.findOne({
-      where: { productId: res.productId },
+      const stock = await manager.findOne(ProductsStock, {
+        where: { productId: res.productId },
+      });
+      if (!stock) throw new NotFoundException('Stock row not found');
+
+      const q = this.num(res.reservedQuantity);
+      const total = this.num(stock.totalQty);
+      const reserved = this.num(stock.reservedQty);
+      if (reserved + 1e-9 < q || total + 1e-9 < q) {
+        throw new BadRequestException('ข้อมูลสต็อกไม่สอดคล้องกับการจอง');
+      }
+
+      stock.totalQty = String(total - q);
+      stock.reservedQty = String(reserved - q);
+      await manager.save(stock);
+
+      await this.fgLotService.issueFromFgLotsFifo(manager, res.productId, q, {
+        referenceNo: res.referenceNo,
+        salesReservationId: res.id,
+        createBy: username,
+        remarks: 'ตัดขายจากการจอง',
+      });
+
+      res.status = 'FULFILLED';
+      return manager.save(res);
     });
-    if (!stock) throw new NotFoundException('Stock row not found');
-
-    const q = this.num(res.reservedQuantity);
-    const total = this.num(stock.totalQty);
-    const reserved = this.num(stock.reservedQty);
-    if (reserved + 1e-9 < q || total + 1e-9 < q) {
-      throw new BadRequestException('ข้อมูลสต็อกไม่สอดคล้องกับการจอง');
-    }
-
-    stock.totalQty = String(total - q);
-    stock.reservedQty = String(reserved - q);
-    await this.stockRepo.save(stock);
-
-    res.status = 'FULFILLED';
-    return this.salesResRepo.save(res);
   }
 }

@@ -699,7 +699,7 @@ export class ProductionOrdersService {
       }
       if (lot.status === 'SPLIT') {
         throw new BadRequestException(
-          'This QR has been split and retired. Please scan a child lot QR.',
+          'QR Code นี้ถูกแบ่งและยกเลิกแล้ว โปรดสแกน QR Code ชุดย่อยแทน',
         );
       }
 
@@ -757,12 +757,14 @@ export class ProductionOrdersService {
 
       const operator = await this.resolveOperatorLogin(dto.operator, user);
 
+      const qtyIn = Number(lot.quantity);
       const tracking = manager.create(ProductionLotTracking, {
         lotId: lot.id,
         processId: dto.processId,
         startTime: new Date(),
         status: 'IN_PROGRESS',
         operator,
+        quantityIn: qtyIn,
       });
       await manager.save(tracking);
 
@@ -823,7 +825,7 @@ export class ProductionOrdersService {
       if (!lot) throw new NotFoundException('QR Code not found');
       if (lot.status === 'SPLIT') {
         throw new BadRequestException(
-          'This QR has been split and retired. Please scan a child lot QR.',
+          'QR Code นี้ถูกแบ่งและยกเลิกแล้ว โปรดสแกน QR Code ชุดย่อยแทน',
         );
       }
 
@@ -853,6 +855,10 @@ export class ProductionOrdersService {
       tracking.endTime = new Date();
       tracking.status = 'COMPLETED';
       tracking.remarks = dto.remarks;
+      tracking.quantityOut = Number(lot.quantity);
+      if (tracking.quantityIn == null) {
+        tracking.quantityIn = Number(lot.quantity);
+      }
       await manager.save(tracking);
 
       const orderedProcesses = await this.resolveOrderedProcesses(
@@ -884,6 +890,13 @@ export class ProductionOrdersService {
           manager,
           lot.order.productId,
           lot.quantity,
+          {
+            productionLotId: lot.id,
+            productionLotNo: lot.lotNo,
+            productionQrCode: lot.qrCode,
+            productionOrderNo: lot.order.orderNo,
+            createBy: user?.username ?? 'system',
+          },
         );
       }
 
@@ -1001,102 +1014,184 @@ export class ProductionOrdersService {
         throw new BadRequestException('reason is required');
       }
 
-      /** รอเริ่ม: จำนวนที่ปล่อยใช้ QR เดิมไปขั้นถัดไป — ส่วนที่เหลือได้ QR ใหม่ */
-      if (lot.status === 'PENDING' && moveReleasedToNextStep) {
-        const splitCountRaw = await manager
-          .createQueryBuilder(ProductionLot, 'lot')
-          .where('lot.parentLotId = :parentLotId', { parentLotId: lot.id })
-          .getCount();
-        const splitRunB = splitCountRaw + 1;
-        const childLotNoB = `${lot.lotNo}-S${String(splitRunB).padStart(2, '0')}`;
-        const childOrderLabelBase = lot.orderLotLabel ?? lot.lotNo;
-        const childOrderLabelB = `${childOrderLabelBase}-S${String(splitRunB).padStart(2, '0')}`;
+      const orderNoRef = lot.orderNoRef ?? lot.order?.orderNo ?? null;
+      const isFirstProcessStep =
+        currentIdx === 0 && moveReleasedToNextStep && Boolean(nextProcessId);
+
+      const mapChild = (
+        c: ProductionLot,
+        opts?: { keptOriginalQr?: boolean; parentId?: number },
+      ) => ({
+        id: c.id,
+        lotNo: c.lotNo,
+        orderNoRef: c.orderNoRef ?? orderNoRef,
+        qrCode: c.qrCode,
+        quantity: Number(c.quantity),
+        status: c.status,
+        currentProcessId: c.currentProcessId ?? null,
+        parentLotId: opts?.parentId ?? c.parentLotId ?? null,
+        keptOriginalQr: opts?.keptOriginalQr ?? false,
+      });
+
+      const logSplitEvent = (
+        childrenMeta: Array<{ id: number; lotNo: string; qrCode: string }>,
+      ) =>
+        this.qrScanLogService.logEvent({
+          domain: QrScanDomain.PRODUCTION,
+          action: QrScanAction.PRODUCTION_STATION_LOOKUP,
+          qrCode: lot.qrCode,
+          userId: userId ?? null,
+          isSuccess: true,
+          metadata: {
+            event: 'LOT_SPLIT',
+            splitMode: isFirstProcessStep ? 'FIRST_PROCESS' : 'GENERAL',
+            parentLotId: lot.id,
+            parentLotNo: lot.lotNo,
+            reason,
+            operator,
+            releasedQuantity: releaseQty,
+            remainingQuantity: remainingQty,
+            children: childrenMeta,
+          },
+        });
+
+      /** ขั้นตอนแรก: ส่วนที่ปล่อยไปขั้นถัดไปใช้ QR เดิม — ส่วนคงเหลือได้ QR ใหม่ */
+      if (isFirstProcessStep && currentProcessId && nextProcessId) {
+        const now = new Date();
+        const splitNote = `แบ่งจาก ${lot.lotNo}: ${reason}`;
+
+        if (openTracking) {
+          openTracking.quantityOut = releaseQty;
+          if (openTracking.quantityIn == null) {
+            openTracking.quantityIn = sourceQty;
+          }
+          openTracking.status = 'COMPLETED';
+          openTracking.endTime = now;
+          openTracking.remarks = openTracking.remarks?.trim()
+            ? `${openTracking.remarks} · split (${reason})`
+            : `split parent: ${reason}`;
+          await manager.save(openTracking);
+        } else {
+          await manager.save(
+            manager.create(ProductionLotTracking, {
+              lotId: lot.id,
+              processId: currentProcessId,
+              startTime: now,
+              endTime: now,
+              status: 'COMPLETED',
+              operator,
+              quantityIn: sourceQty,
+              quantityOut: releaseQty,
+              remarks: splitNote,
+            }),
+          );
+        }
 
         lot.quantity = releaseQty;
         lot.currentProcessId = nextProcessId;
         lot.status = 'IN_PROGRESS';
-        if (!lot.orderNoRef) {
-          lot.orderNoRef = lot.order?.orderNo ?? lot.orderNoRef;
-        }
+        lot.orderNoRef = orderNoRef;
+        lot.splitReason = reason;
+        const savedKeptQr = await manager.save(lot);
 
-        if (currentProcessId) {
-          const completeRow = manager.create(ProductionLotTracking, {
-            lotId: lot.id,
-            processId: currentProcessId,
-            startTime: new Date(),
-            endTime: new Date(),
-            status: 'COMPLETED',
-            operator,
-            remarks: reason,
-          });
-          await manager.save(completeRow);
-        }
-
-        if (nextProcessId) {
-          const nextStepRow = manager.create(ProductionLotTracking, {
+        await manager.save(
+          manager.create(ProductionLotTracking, {
             lotId: lot.id,
             processId: nextProcessId,
-            startTime: new Date(),
+            startTime: now,
             status: 'IN_PROGRESS',
             operator,
-            remarks: reason,
-          });
-          await manager.save(nextStepRow);
-        }
+            quantityIn: releaseQty,
+            remarks: splitNote,
+          }),
+        );
 
+        const childLotNoRemaining = `${lot.lotNo}-S${String(splitCountRaw + 1).padStart(2, '0')}`;
+        const childOrderLabelRemaining = `${childOrderLabelBase}-S${String(splitCountRaw + 1).padStart(2, '0')}`;
         const remaining = manager.create(ProductionLot, {
           orderId: lot.orderId,
-          lotNo: childLotNoB,
+          lotNo: childLotNoRemaining,
           lotPdNo: lot.lotPdNo,
-          orderLotLabel: childOrderLabelB,
-          orderNoRef: lot.orderNoRef ?? lot.order?.orderNo ?? null,
-          qrCode: buildInventoryStyleQrCode(childLotNoB),
+          orderLotLabel: childOrderLabelRemaining,
+          orderNoRef,
+          qrCode: buildInventoryStyleQrCode(childLotNoRemaining),
           sequenceNo: maxSeq + 1,
           quantity: remainingQty,
           parentLotId: lot.id,
           splitReason: reason,
-          currentProcessId: currentProcessId,
+          currentProcessId,
           status: 'PENDING',
         });
-        const savedSource = await manager.save(lot);
         const savedRemaining = await manager.save(remaining);
 
+        await this.inheritPriorProcessTrackingFromParent(
+          manager,
+          lot,
+          savedRemaining.id,
+          remainingQty,
+          orderedProcesses,
+          currentProcessId,
+        );
+        await this.applyRemainingLotWorkflowAfterSplit(manager, savedRemaining, {
+          remainingQty,
+          currentProcessId,
+          parentWasInProgress: false,
+          operator,
+          reason,
+          parentLotNo: lot.lotNo,
+          openTrackingStartTime: null,
+          openTrackingOperator: null,
+        });
+
+        const childrenOut = [
+          mapChild(savedKeptQr, { keptOriginalQr: true }),
+          mapChild(savedRemaining),
+        ];
+        await logSplitEvent(
+          childrenOut.map((c) => ({ id: c.id, lotNo: c.lotNo, qrCode: c.qrCode })),
+        );
+
         return {
+          splitTrace: {
+            splitMode: 'FIRST_PROCESS',
+            parentLotId: lot.id,
+            parentLotNo: lot.lotNo,
+            parentQrCode: lot.qrCode,
+            parentStatus: savedKeptQr.status,
+            parentRetired: false,
+            reason,
+            operator,
+            releasedQuantity: releaseQty,
+            remainingQuantity: remainingQty,
+            splitAt: new Date().toISOString(),
+          },
           sourceLot: {
             id: lot.id,
             lotNo: lot.lotNo,
-            orderNoRef: lot.orderNoRef ?? lot.order?.orderNo ?? null,
+            orderNoRef,
             qrCode: lot.qrCode,
             quantity: sourceQty,
-            status: 'IN_PROGRESS',
+            status: savedKeptQr.status,
             retired: false,
             keptOriginalQr: true,
           },
-          children: [
-            {
-              id: savedSource.id,
-              lotNo: savedSource.lotNo,
-              orderNoRef:
-                savedSource.orderNoRef ?? lot.orderNoRef ?? lot.order?.orderNo ?? null,
-              qrCode: savedSource.qrCode,
-              quantity: Number(savedSource.quantity),
-              status: savedSource.status,
-              currentProcessId: savedSource.currentProcessId ?? null,
-              keptOriginalQr: true,
-            },
-            {
-              id: savedRemaining.id,
-              lotNo: savedRemaining.lotNo,
-              orderNoRef:
-                savedRemaining.orderNoRef ?? lot.orderNoRef ?? lot.order?.orderNo ?? null,
-              qrCode: savedRemaining.qrCode,
-              quantity: Number(savedRemaining.quantity),
-              status: savedRemaining.status,
-              currentProcessId: savedRemaining.currentProcessId ?? null,
-              keptOriginalQr: false,
-            },
-          ],
+          children: childrenOut,
         };
+      }
+
+      /** ขั้นตอนที่ไม่ใช่ขั้นแรก: ยกเลิก QR เดิม — ลูกทั้งคู่ได้ QR ใหม่ */
+      if (currentProcessId && openTracking) {
+        openTracking.quantityOut = releaseQty;
+        if (openTracking.quantityIn == null) {
+          openTracking.quantityIn = sourceQty;
+        }
+        openTracking.status = 'COMPLETED';
+        openTracking.endTime = new Date();
+        const priorRemarks = openTracking.remarks?.trim();
+        openTracking.remarks = priorRemarks
+          ? `${priorRemarks} · split (${reason})`
+          : `split parent: ${reason}`;
+        await manager.save(openTracking);
       }
 
       const released = manager.create(ProductionLot, {
@@ -1104,112 +1199,322 @@ export class ProductionOrdersService {
         lotNo: childLotNoA,
         lotPdNo: lot.lotPdNo,
         orderLotLabel: childOrderLabelA,
-        orderNoRef: lot.orderNoRef ?? lot.order?.orderNo ?? null,
+        orderNoRef,
         qrCode: buildInventoryStyleQrCode(childLotNoA),
         sequenceNo: maxSeq + 1,
         quantity: releaseQty,
         parentLotId: lot.id,
         splitReason: reason,
-        currentProcessId: moveReleasedToNextStep ? nextProcessId : currentProcessId,
-        status: moveReleasedToNextStep ? 'PENDING' : lot.status,
+        currentProcessId,
+        status: 'PENDING',
       });
       const remaining = manager.create(ProductionLot, {
         orderId: lot.orderId,
         lotNo: childLotNoB,
         lotPdNo: lot.lotPdNo,
         orderLotLabel: childOrderLabelB,
-        orderNoRef: lot.orderNoRef ?? lot.order?.orderNo ?? null,
+        orderNoRef,
         qrCode: buildInventoryStyleQrCode(childLotNoB),
         sequenceNo: maxSeq + 2,
         quantity: remainingQty,
         parentLotId: lot.id,
         splitReason: reason,
-        currentProcessId: currentProcessId,
-        status: lot.status === 'PENDING' ? 'PENDING' : 'IN_PROGRESS',
+        currentProcessId,
+        status: 'PENDING',
       });
 
       const savedReleased = await manager.save(released);
       const savedRemaining = await manager.save(remaining);
 
       if (currentProcessId) {
-        if (moveReleasedToNextStep) {
-          const completeRow = manager.create(ProductionLotTracking, {
-            lotId: savedReleased.id,
-            processId: currentProcessId,
-            startTime: new Date(),
-            endTime: new Date(),
-            status: 'COMPLETED',
-            operator,
-            remarks: reason,
-          });
-          await manager.save(completeRow);
-        } else if (lot.status === 'IN_PROGRESS') {
-          const inProgRow = manager.create(ProductionLotTracking, {
-            lotId: savedReleased.id,
-            processId: currentProcessId,
-            startTime: new Date(),
-            status: 'IN_PROGRESS',
-            operator,
-            remarks: `split copy from ${lot.lotNo}`,
-          });
-          await manager.save(inProgRow);
-        }
+        await this.inheritPriorProcessTrackingFromParent(
+          manager,
+          lot,
+          savedReleased.id,
+          releaseQty,
+          orderedProcesses,
+          currentProcessId,
+        );
+        await this.inheritPriorProcessTrackingFromParent(
+          manager,
+          lot,
+          savedRemaining.id,
+          remainingQty,
+          orderedProcesses,
+          currentProcessId,
+        );
 
-        if (lot.status === 'IN_PROGRESS') {
-          const remRow = manager.create(ProductionLotTracking, {
-            lotId: savedRemaining.id,
-            processId: currentProcessId,
-            startTime: openTracking?.startTime ?? new Date(),
-            status: 'IN_PROGRESS',
-            operator: openTracking?.operator ?? operator,
-            remarks: `remaining from split of ${lot.lotNo}`,
-          });
-          await manager.save(remRow);
-        }
+        await this.applyReleasedLotWorkflowAfterSplit(
+          manager,
+          savedReleased,
+          {
+            releaseQty,
+            currentProcessId,
+            nextProcessId,
+            moveReleasedToNextStep,
+            operator,
+            reason,
+            parentLotNo: lot.lotNo,
+          },
+        );
+        await this.applyRemainingLotWorkflowAfterSplit(
+          manager,
+          savedRemaining,
+          {
+            remainingQty,
+            currentProcessId,
+            parentWasInProgress: lot.status === 'IN_PROGRESS',
+            operator,
+            reason,
+            parentLotNo: lot.lotNo,
+            openTrackingStartTime: openTracking?.startTime ?? null,
+            openTrackingOperator: openTracking?.operator ?? null,
+          },
+        );
       }
 
       lot.status = 'SPLIT';
       lot.currentProcessId = undefined;
       lot.splitReason = reason;
-      if (!lot.orderNoRef) {
-        lot.orderNoRef = lot.order?.orderNo ?? lot.orderNoRef;
-      }
+      lot.orderNoRef = orderNoRef;
       await manager.save(lot);
 
+      const childrenOut = [mapChild(savedReleased), mapChild(savedRemaining)];
+      await logSplitEvent(
+        childrenOut.map((c) => ({ id: c.id, lotNo: c.lotNo, qrCode: c.qrCode })),
+      );
+
       return {
+        splitTrace: {
+          splitMode: 'GENERAL',
+          parentLotId: lot.id,
+          parentLotNo: lot.lotNo,
+          parentQrCode: lot.qrCode,
+          parentStatus: 'SPLIT',
+          parentRetired: true,
+          reason,
+          operator,
+          releasedQuantity: releaseQty,
+          remainingQuantity: remainingQty,
+          splitAt: new Date().toISOString(),
+        },
         sourceLot: {
           id: lot.id,
           lotNo: lot.lotNo,
-          orderNoRef: lot.orderNoRef ?? lot.order?.orderNo ?? null,
+          orderNoRef,
           qrCode: lot.qrCode,
           quantity: sourceQty,
           status: 'SPLIT',
           retired: true,
+          keptOriginalQr: false,
         },
-        children: [
-          {
-            id: savedReleased.id,
-            lotNo: savedReleased.lotNo,
-            orderNoRef:
-              savedReleased.orderNoRef ?? lot.orderNoRef ?? lot.order?.orderNo ?? null,
-            qrCode: savedReleased.qrCode,
-            quantity: Number(savedReleased.quantity),
-            status: savedReleased.status,
-            currentProcessId: savedReleased.currentProcessId ?? null,
-          },
-          {
-            id: savedRemaining.id,
-            lotNo: savedRemaining.lotNo,
-            orderNoRef:
-              savedRemaining.orderNoRef ?? lot.orderNoRef ?? lot.order?.orderNo ?? null,
-            qrCode: savedRemaining.qrCode,
-            quantity: Number(savedRemaining.quantity),
-            status: savedRemaining.status,
-            currentProcessId: savedRemaining.currentProcessId ?? null,
-          },
-        ],
+        children: childrenOut,
       };
     });
+  }
+
+  async getLotStepQuantities(qrCode: string, _userId?: string) {
+    const code = this.normalizeLotLookupCode(qrCode);
+    const lot = await this.lotRepo.findOne({
+      where: [{ qrCode: code }, { lotNo: code }],
+      relations: [
+        'order',
+        'order.product',
+        'tracking',
+        'tracking.process',
+      ],
+    });
+    if (!lot) throw new NotFoundException('QR Code not found');
+    if (lot.status === 'SPLIT') {
+      throw new BadRequestException(
+        'QR Code นี้ถูกแบ่งและยกเลิกแล้ว โปรดสแกน QR Code ชุดย่อยแทน',
+      );
+    }
+
+    const childLots = await this.lotRepo.find({
+      where: { parentLotId: lot.id },
+      order: { id: 'ASC' },
+    });
+
+    return this.buildLotStepTracePayload(lot, childLots);
+  }
+
+  async getLotStepTraceReport(filters: {
+    startDate?: string;
+    endDate?: string;
+    orderNo?: string;
+    lotSearch?: string;
+    productId?: number;
+    status?: string;
+    includeSplitRetired?: boolean;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = Math.max(1, Number(filters.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters.limit) || 30));
+    const skip = (page - 1) * limit;
+
+    const qb = this.lotRepo
+      .createQueryBuilder('lot')
+      .innerJoinAndSelect('lot.order', 'order')
+      .innerJoinAndSelect('order.product', 'product')
+      .leftJoinAndSelect('lot.tracking', 'tracking')
+      .leftJoinAndSelect('tracking.process', 'process')
+      .orderBy('product.productCode', 'ASC')
+      .addOrderBy('lot.createDate', 'DESC')
+      .addOrderBy('lot.id', 'DESC');
+
+    if (filters.startDate?.trim()) {
+      qb.andWhere('lot.createDate >= :startDate::date', {
+        startDate: filters.startDate.trim(),
+      });
+    }
+    if (filters.endDate?.trim()) {
+      qb.andWhere("lot.createDate < (:endDate::date + interval '1 day')", {
+        endDate: filters.endDate.trim(),
+      });
+    }
+    if (filters.orderNo?.trim()) {
+      qb.andWhere('order.orderNo ILIKE :orderNo', {
+        orderNo: `%${filters.orderNo.trim()}%`,
+      });
+    }
+    if (filters.lotSearch?.trim()) {
+      const q = `%${filters.lotSearch.trim()}%`;
+      qb.andWhere(
+        new Brackets((sub) => {
+          sub
+            .where('lot.lotNo ILIKE :lotQ', { lotQ: q })
+            .orWhere('lot.qrCode ILIKE :lotQ', { lotQ: q })
+            .orWhere('lot.orderLotLabel ILIKE :lotQ', { lotQ: q });
+        }),
+      );
+    }
+    if (filters.productId) {
+      qb.andWhere('order.productId = :productId', {
+        productId: filters.productId,
+      });
+    }
+    if (filters.status?.trim()) {
+      qb.andWhere('lot.status = :lotStatus', {
+        lotStatus: filters.status.trim().toUpperCase(),
+      });
+    } else if (!filters.includeSplitRetired) {
+      qb.andWhere('lot.status <> :splitStatus', { splitStatus: 'SPLIT' });
+    }
+
+    const total = await qb.getCount();
+    const lots = await qb.skip(skip).take(limit).getMany();
+
+    const lotIds = lots.map((l) => l.id);
+    const childLots =
+      lotIds.length > 0
+        ? await this.lotRepo.find({
+            where: { parentLotId: In(lotIds) },
+            order: { id: 'ASC' },
+          })
+        : [];
+    const childrenByParent = new Map<number, ProductionLot[]>();
+    for (const c of childLots) {
+      if (c.parentLotId == null) continue;
+      const list = childrenByParent.get(c.parentLotId) ?? [];
+      list.push(c);
+      childrenByParent.set(c.parentLotId, list);
+    }
+
+    const data = await Promise.all(
+      lots.map((lot) =>
+        this.buildLotStepTracePayload(
+          lot,
+          childrenByParent.get(lot.id) ?? [],
+        ),
+      ),
+    );
+
+    return {
+      success: true,
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 0,
+    };
+  }
+
+  private async buildLotStepTracePayload(
+    lot: ProductionLot,
+    childLots: ProductionLot[] = [],
+  ) {
+    const orderedProcesses = await this.resolveOrderedProcesses(
+      this.dataSource.manager,
+      lot.order.productId,
+    );
+
+    const trackingByProcess = new Map(
+      (lot.tracking ?? []).map((t) => [t.processId, t]),
+    );
+
+    const steps = await Promise.all(
+      orderedProcesses.map(async (proc, idx) => {
+        const t = trackingByProcess.get(proc.id);
+        let stepStatus: 'pending' | 'in_progress' | 'completed' | 'rejected' =
+          'pending';
+        if (t?.status === 'IN_PROGRESS') stepStatus = 'in_progress';
+        else if (t?.status === 'COMPLETED') stepStatus = 'completed';
+        else if (t?.status === 'REJECTED') stepStatus = 'rejected';
+
+        let qtyIn = t?.quantityIn != null ? Number(t.quantityIn) : null;
+        let qtyOut = t?.quantityOut != null ? Number(t.quantityOut) : null;
+
+        if (t && qtyIn == null) {
+          qtyIn = Number(lot.quantity);
+        }
+        if (t?.status === 'COMPLETED' && qtyOut == null) {
+          qtyOut = Number(lot.quantity);
+        }
+
+        const operator =
+          t?.operator != null
+            ? (await this.operatorLoginFromStored(t.operator)) ?? t.operator
+            : null;
+
+        return {
+          stepOrder: idx + 1,
+          processId: proc.id,
+          processCode: proc.processCode,
+          processName: proc.processName,
+          status: stepStatus,
+          quantityIn: qtyIn,
+          quantityOut: qtyOut,
+          operator,
+          startTime: t?.startTime ?? null,
+          endTime: t?.endTime ?? null,
+          remarks: t?.remarks ?? null,
+        };
+      }),
+    );
+
+    return {
+      lotId: lot.id,
+      lotNo: lot.lotNo,
+      qrCode: lot.qrCode,
+      lotQuantity: Number(lot.quantity),
+      lotStatus: lot.status,
+      lotCreatedAt: lot.createDate ?? null,
+      orderNo: lot.order.orderNo,
+      productId: lot.order.productId,
+      productCode: lot.order.product?.productCode ?? null,
+      productName: lot.order.product?.productName ?? null,
+      unit: 'PCS',
+      steps,
+      splitChildren: childLots.map((c) => ({
+        lotNo: c.lotNo,
+        qrCode: c.qrCode,
+        quantity: Number(c.quantity),
+        status: c.status,
+        splitReason: c.splitReason ?? null,
+      })),
+    };
   }
 
   async getLotStation(qrCode: string, userId?: string) {
@@ -1237,7 +1542,7 @@ export class ProductionOrdersService {
     }
     if (lot.status === 'SPLIT') {
       throw new BadRequestException(
-        'This QR has been split and retired. Please scan a child lot QR.',
+        'QR Code นี้ถูกแบ่งและยกเลิกแล้ว โปรดสแกน QR Code ชุดย่อยแทน',
       );
     }
 
@@ -1284,7 +1589,7 @@ export class ProductionOrdersService {
     }
     if (lot.status === 'SPLIT') {
       throw new BadRequestException(
-        'This QR has been split and retired. Please scan a child lot QR.',
+        'QR Code นี้ถูกแบ่งและยกเลิกแล้ว โปรดสแกน QR Code ชุดย่อยแทน',
       );
     }
 
@@ -1296,6 +1601,8 @@ export class ProductionOrdersService {
         processName: t.process?.processName ?? null,
         startTime: t.startTime ?? null,
         endTime: t.endTime ?? null,
+        quantityIn: t.quantityIn != null ? Number(t.quantityIn) : null,
+        quantityOut: t.quantityOut != null ? Number(t.quantityOut) : null,
         operator: (await this.operatorLoginFromStored(t.operator)) ?? null,
         remarks: t.remarks ?? null,
       })),
@@ -1480,7 +1787,7 @@ export class ProductionOrdersService {
     }
     if (lot.status === 'SPLIT') {
       throw new BadRequestException(
-        'This QR has been split and retired. Please scan a child lot QR.',
+        'QR Code นี้ถูกแบ่งและยกเลิกแล้ว โปรดสแกน QR Code ชุดย่อยแทน',
       );
     }
 
@@ -1493,6 +1800,8 @@ export class ProductionOrdersService {
         startTime: t.startTime,
         endTime: t.endTime,
         status: t.status,
+        quantityIn: t.quantityIn != null ? Number(t.quantityIn) : null,
+        quantityOut: t.quantityOut != null ? Number(t.quantityOut) : null,
         operator: (await this.operatorLoginFromStored(t.operator)) ?? t.operator,
         remarks: t.remarks,
         duration:
@@ -1538,6 +1847,184 @@ export class ProductionOrdersService {
     });
 
     return payload;
+  }
+
+  /** Clone COMPLETED steps before current process from parent → child after split. */
+  private async inheritPriorProcessTrackingFromParent(
+    manager: EntityManager,
+    parentLot: ProductionLot,
+    childLotId: number,
+    childQuantity: number,
+    orderedProcesses: ProductionProcess[],
+    currentProcessId: number,
+  ): Promise<void> {
+    const currentIdx = orderedProcesses.findIndex(
+      (p) => p.id === currentProcessId,
+    );
+    if (currentIdx <= 0) return;
+
+    const priorProcessIds = orderedProcesses
+      .slice(0, currentIdx)
+      .map((p) => p.id);
+
+    const parentRows = await manager.find(ProductionLotTracking, {
+      where: {
+        lotId: parentLot.id,
+        processId: In(priorProcessIds),
+        status: 'COMPLETED',
+      },
+      order: { id: 'ASC' },
+    });
+
+    for (const pt of parentRows) {
+      const exists = await manager.findOne(ProductionLotTracking, {
+        where: { lotId: childLotId, processId: pt.processId },
+      });
+      if (exists) continue;
+
+      await manager.save(
+        manager.create(ProductionLotTracking, {
+          lotId: childLotId,
+          processId: pt.processId,
+          startTime: pt.startTime ?? pt.createDate,
+          endTime: pt.endTime ?? pt.startTime ?? new Date(),
+          status: 'COMPLETED',
+          operator: pt.operator,
+          quantityIn: childQuantity,
+          quantityOut: childQuantity,
+          remarks: this.appendSplitLineageRemark(pt.remarks, parentLot.lotNo),
+        }),
+      );
+    }
+  }
+
+  private appendSplitLineageRemark(
+    prior: string | null | undefined,
+    parentLotNo: string,
+  ): string {
+    const tag = `สืบทอดจาก ${parentLotNo} (split)`;
+    const base = prior?.trim();
+    if (!base) return tag;
+    if (base.includes(parentLotNo)) return base;
+    return `${base} · ${tag}`;
+  }
+
+  /** ล็อตย่อยส่วนที่ปล่อย — ปิดขั้นปัจจุบันแล้วส่งไปขั้นถัดไป (ถ้า workflow อนุญาต) */
+  private async applyReleasedLotWorkflowAfterSplit(
+    manager: EntityManager,
+    child: ProductionLot,
+    opts: {
+      releaseQty: number;
+      currentProcessId: number;
+      nextProcessId: number | undefined;
+      moveReleasedToNextStep: boolean;
+      operator: string;
+      reason: string;
+      parentLotNo: string;
+    },
+  ): Promise<void> {
+    const {
+      releaseQty,
+      currentProcessId,
+      nextProcessId,
+      moveReleasedToNextStep,
+      operator,
+      reason,
+      parentLotNo,
+    } = opts;
+    const now = new Date();
+    const splitNote = `แบ่งจาก ${parentLotNo}: ${reason}`;
+
+    if (moveReleasedToNextStep && nextProcessId) {
+      await manager.save(
+        manager.create(ProductionLotTracking, {
+          lotId: child.id,
+          processId: currentProcessId,
+          startTime: now,
+          endTime: now,
+          status: 'COMPLETED',
+          operator,
+          quantityIn: releaseQty,
+          quantityOut: releaseQty,
+          remarks: splitNote,
+        }),
+      );
+      child.currentProcessId = nextProcessId;
+      child.status = 'IN_PROGRESS';
+      await manager.save(child);
+      await manager.save(
+        manager.create(ProductionLotTracking, {
+          lotId: child.id,
+          processId: nextProcessId,
+          startTime: now,
+          status: 'IN_PROGRESS',
+          operator,
+          quantityIn: releaseQty,
+          remarks: splitNote,
+        }),
+      );
+      return;
+    }
+
+    child.currentProcessId = currentProcessId;
+    child.status = 'IN_PROGRESS';
+    await manager.save(child);
+    await manager.save(
+      manager.create(ProductionLotTracking, {
+        lotId: child.id,
+        processId: currentProcessId,
+        startTime: now,
+        status: 'IN_PROGRESS',
+        operator,
+        quantityIn: releaseQty,
+        remarks: splitNote,
+      }),
+    );
+  }
+
+  /** ล็อตย่อยส่วนที่เหลือ — คงอยู่ขั้นปัจจุบัน */
+  private async applyRemainingLotWorkflowAfterSplit(
+    manager: EntityManager,
+    child: ProductionLot,
+    opts: {
+      remainingQty: number;
+      currentProcessId: number;
+      parentWasInProgress: boolean;
+      operator: string;
+      reason: string;
+      parentLotNo: string;
+      openTrackingStartTime: Date | null;
+      openTrackingOperator: string | null;
+    },
+  ): Promise<void> {
+    const {
+      remainingQty,
+      currentProcessId,
+      parentWasInProgress,
+      operator,
+      reason,
+      parentLotNo,
+      openTrackingStartTime,
+      openTrackingOperator,
+    } = opts;
+
+    child.currentProcessId = currentProcessId;
+    child.status = parentWasInProgress ? 'IN_PROGRESS' : 'PENDING';
+    await manager.save(child);
+
+    if (parentWasInProgress) {
+      await manager.save(
+        manager.create(ProductionLotTracking, {
+          lotId: child.id,
+          processId: currentProcessId,
+          startTime: openTrackingStartTime ?? new Date(),
+          status: 'IN_PROGRESS',
+          operator: openTrackingOperator ?? operator,
+          quantityIn: remainingQty,
+          remarks: `คงเหลือจาก split ${parentLotNo}: ${reason}`,
+        }),
+      );
+    }
   }
 
   private normalizeLotLookupCode(input: string): string {

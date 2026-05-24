@@ -8,6 +8,7 @@ import { ProductsUploadController } from './products-upload.controller';
 import { ProductsService } from './products.service';
 import { ProductMasterService } from './product-master.service';
 import { ProductStockService } from './product-stock.service';
+import { ProductFgLotService } from './product-fg-lot.service';
 import { ProductProductionStepsService } from './product-production-steps.service';
 import { AuthModule } from '../auth/auth.module';
 import { ProductionProcess } from '../production-orders/entities/production-process.entity';
@@ -25,6 +26,8 @@ import {
   ProductProductionStep,
   ProductsStock,
   ProductSalesReservation,
+  ProductFgLot,
+  ProductFgLotMovement,
 } from './entities';
 import { Material } from '../materials/entities/material.entity';
 
@@ -45,6 +48,8 @@ import { Material } from '../materials/entities/material.entity';
       ProductProductionStep,
       ProductsStock,
       ProductSalesReservation,
+      ProductFgLot,
+      ProductFgLotMovement,
       Material,
       ProductionProcess,
     ]),
@@ -60,8 +65,9 @@ import { Material } from '../materials/entities/material.entity';
     ProductsService,
     ProductMasterService,
     ProductStockService,
+    ProductFgLotService,
     ProductProductionStepsService,
   ],
-  exports: [ProductsService, ProductStockService],
+  exports: [ProductsService, ProductStockService, ProductFgLotService],
 })
 export class ProductsModule {}

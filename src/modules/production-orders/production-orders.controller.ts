@@ -43,6 +43,35 @@ export class ProductionOrdersController {
     return this.service.findAllOrders(+page, +limit, userId, departmentId);
   }
 
+  /** รายงานสอบกลับล็อต — รับเข้า/จ่ายออกทุกขั้นตอน (แบบ Stock Card) */
+  @Get('reports/lot-step-trace')
+  @RequirePermissions('production_orders.read')
+  getLotStepTraceReport(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('orderNo') orderNo?: string,
+    @Query('lotSearch') lotSearch?: string,
+    @Query('productId') productId?: string,
+    @Query('status') status?: string,
+    @Query('includeSplitRetired') includeSplitRetired?: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 30,
+  ) {
+    return this.service.getLotStepTraceReport({
+      startDate,
+      endDate,
+      orderNo,
+      lotSearch,
+      productId: productId ? +productId : undefined,
+      status,
+      includeSplitRetired:
+        includeSplitRetired === '1' ||
+        includeSplitRetired === 'true',
+      page: +page,
+      limit: +limit,
+    });
+  }
+
   /** Dept dashboard: lots currently IN_PROGRESS for the user's department */
   @Get('in-progress/my-dept')
   @PermissionMatch('any')
@@ -63,6 +92,16 @@ export class ProductionOrdersController {
     @Headers('x-user-id') userId?: string,
   ) {
     return this.service.getLotStation(qrCode, userId);
+  }
+
+  @Get('lots/:qrCode/step-quantities')
+  @PermissionMatch('any')
+  @RequirePermissions('production_orders.read', 'production_orders.update')
+  getLotStepQuantities(
+    @Param('qrCode') qrCode: string,
+    @Headers('x-user-id') userId?: string,
+  ) {
+    return this.service.getLotStepQuantities(qrCode, userId);
   }
 
   @Get('lots/:qrCode/tracking')
