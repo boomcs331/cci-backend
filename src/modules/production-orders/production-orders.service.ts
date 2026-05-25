@@ -876,6 +876,9 @@ export class ProductionOrdersService {
       }
 
       const prevLotStatus = lot.status;
+      const stockCreateBy =
+        user?.username ?? tracking.operator ?? 'system';
+      const stepOperator = tracking.operator ?? stockCreateBy;
 
       if (currentIndex === orderedProcesses.length - 1) {
         lot.status = 'COMPLETED';
@@ -885,7 +888,23 @@ export class ProductionOrdersService {
       }
       await manager.save(lot);
 
-      if (lot.status === 'COMPLETED' && prevLotStatus !== 'COMPLETED') {
+      let finalizedByAutoComplete = false;
+      if (lot.status !== 'COMPLETED') {
+        finalizedByAutoComplete = await this.autoCloseTerminalCompleteStep(
+          manager,
+          lot,
+          orderedProcesses,
+          stepOperator,
+          stockCreateBy,
+          dto.remarks,
+        );
+      }
+
+      if (
+        lot.status === 'COMPLETED' &&
+        prevLotStatus !== 'COMPLETED' &&
+        !finalizedByAutoComplete
+      ) {
         await this.productStockService.addFinishedGoodsFromLot(
           manager,
           lot.order.productId,
@@ -895,7 +914,7 @@ export class ProductionOrdersService {
             productionLotNo: lot.lotNo,
             productionQrCode: lot.qrCode,
             productionOrderNo: lot.order.orderNo,
-            createBy: user?.username ?? 'system',
+            createBy: stockCreateBy,
           },
         );
       }
@@ -1094,17 +1113,29 @@ export class ProductionOrdersService {
         lot.splitReason = reason;
         const savedKeptQr = await manager.save(lot);
 
-        await manager.save(
-          manager.create(ProductionLotTracking, {
-            lotId: lot.id,
-            processId: nextProcessId,
-            startTime: now,
-            status: 'IN_PROGRESS',
+        const terminalComplete = this.getTerminalCompleteProcess(orderedProcesses);
+        if (terminalComplete && terminalComplete.id === nextProcessId) {
+          await this.autoCloseTerminalCompleteStep(
+            manager,
+            savedKeptQr,
+            orderedProcesses,
             operator,
-            quantityIn: releaseQty,
-            remarks: splitNote,
-          }),
-        );
+            operator,
+            splitNote,
+          );
+        } else {
+          await manager.save(
+            manager.create(ProductionLotTracking, {
+              lotId: lot.id,
+              processId: nextProcessId,
+              startTime: now,
+              status: 'IN_PROGRESS',
+              operator,
+              quantityIn: releaseQty,
+              remarks: splitNote,
+            }),
+          );
+        }
 
         const childLotNoRemaining = `${lot.lotNo}-S${String(splitCountRaw + 1).padStart(2, '0')}`;
         const childOrderLabelRemaining = `${childOrderLabelBase}-S${String(splitCountRaw + 1).padStart(2, '0')}`;
@@ -1849,6 +1880,134 @@ export class ProductionOrdersService {
     return payload;
   }
 
+  private normalizeProcessCode(code: string): string {
+    return code.trim().toUpperCase();
+  }
+
+  /** ขั้นสุดท้ายของ flow ที่เป็น process_code COMPLETE (ไม่มีขั้นถัดไป) */
+  private getTerminalCompleteProcess(
+    orderedProcesses: ProductionProcess[],
+  ): ProductionProcess | null {
+    if (orderedProcesses.length < 2) return null;
+    const last = orderedProcesses[orderedProcesses.length - 1];
+    if (this.normalizeProcessCode(last.processCode) !== 'COMPLETE') return null;
+    return last;
+  }
+
+  private async resolveOrderedProcessesForLot(
+    manager: EntityManager,
+    lot: ProductionLot,
+  ): Promise<ProductionProcess[]> {
+    const order =
+      lot.order ??
+      (await manager.findOne(ProductionOrder, { where: { id: lot.orderId } }));
+    if (!order) return [];
+    return this.resolveOrderedProcesses(manager, order.productId);
+  }
+
+  /**
+   * เมื่อขั้นก่อน Complete (ขั้นสุดท้ายของ flow) ปิดแล้ว — ปิด Complete ทันที
+   * ไม่สร้าง IN_PROGRESS / คิวงานสำหรับ Complete
+   */
+  private async autoCloseTerminalCompleteStep(
+    manager: EntityManager,
+    lot: ProductionLot,
+    orderedProcesses: ProductionProcess[],
+    operator: string,
+    stockCreateBy: string,
+    remarks?: string,
+  ): Promise<boolean> {
+    const completeProc = this.getTerminalCompleteProcess(orderedProcesses);
+    if (!completeProc) return false;
+
+    const prevProc = orderedProcesses[orderedProcesses.length - 2];
+    const prevClosed = await manager.findOne(ProductionLotTracking, {
+      where: { lotId: lot.id, processId: prevProc.id, status: 'COMPLETED' },
+    });
+    if (!prevClosed) return false;
+
+    const alreadyDone = await manager.findOne(ProductionLotTracking, {
+      where: { lotId: lot.id, processId: completeProc.id, status: 'COMPLETED' },
+    });
+    if (alreadyDone) {
+      if (lot.status !== 'COMPLETED') {
+        lot.status = 'COMPLETED';
+        lot.currentProcessId = undefined;
+        await manager.save(lot);
+      }
+      return true;
+    }
+
+    const now = new Date();
+    const qty = Number(lot.quantity);
+    const autoRemark = remarks?.trim()
+      ? `${remarks.trim()} · ปิด Complete อัตโนมัติ`
+      : 'ปิด Complete อัตโนมัติ';
+
+    const openComplete = await manager.findOne(ProductionLotTracking, {
+      where: {
+        lotId: lot.id,
+        processId: completeProc.id,
+        status: 'IN_PROGRESS',
+      },
+    });
+    if (openComplete) {
+      openComplete.status = 'COMPLETED';
+      openComplete.endTime = now;
+      openComplete.quantityOut = qty;
+      if (openComplete.quantityIn == null) {
+        openComplete.quantityIn = qty;
+      }
+      openComplete.remarks = openComplete.remarks?.trim()
+        ? `${openComplete.remarks} · ${autoRemark}`
+        : autoRemark;
+      await manager.save(openComplete);
+    } else {
+      await manager.save(
+        manager.create(ProductionLotTracking, {
+          lotId: lot.id,
+          processId: completeProc.id,
+          startTime: now,
+          endTime: now,
+          status: 'COMPLETED',
+          operator,
+          quantityIn: qty,
+          quantityOut: qty,
+          remarks: autoRemark,
+        }),
+      );
+    }
+
+    const prevLotStatus = lot.status;
+    lot.status = 'COMPLETED';
+    lot.currentProcessId = undefined;
+    await manager.save(lot);
+
+    if (prevLotStatus !== 'COMPLETED') {
+      const order =
+        lot.order ??
+        (await manager.findOne(ProductionOrder, {
+          where: { id: lot.orderId },
+        }));
+      if (order) {
+        await this.productStockService.addFinishedGoodsFromLot(
+          manager,
+          order.productId,
+          lot.quantity,
+          {
+            productionLotId: lot.id,
+            productionLotNo: lot.lotNo,
+            productionQrCode: lot.qrCode,
+            productionOrderNo: order.orderNo,
+            createBy: stockCreateBy,
+          },
+        );
+      }
+    }
+
+    return true;
+  }
+
   /** Clone COMPLETED steps before current process from parent → child after split. */
   private async inheritPriorProcessTrackingFromParent(
     manager: EntityManager,
@@ -1952,6 +2111,23 @@ export class ProductionOrdersService {
       child.currentProcessId = nextProcessId;
       child.status = 'IN_PROGRESS';
       await manager.save(child);
+
+      const orderedProcesses =
+        await this.resolveOrderedProcessesForLot(manager, child);
+      const terminalComplete =
+        this.getTerminalCompleteProcess(orderedProcesses);
+      if (terminalComplete && terminalComplete.id === nextProcessId) {
+        await this.autoCloseTerminalCompleteStep(
+          manager,
+          child,
+          orderedProcesses,
+          operator,
+          operator,
+          splitNote,
+        );
+        return;
+      }
+
       await manager.save(
         manager.create(ProductionLotTracking, {
           lotId: child.id,
