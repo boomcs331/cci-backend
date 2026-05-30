@@ -9,9 +9,11 @@ import { MaterialsModule } from './modules/materials/materials.module';
 import { ProductsModule } from './modules/products/products.module';
 import { ProductionPlansModule } from './modules/production-plans/production-plans.module';
 import { ProductionOrdersModule } from './modules/production-orders/production-orders.module';
+import { SalesModule } from './modules/sales/sales.module';
 import { AuditModule } from './core/audit/audit.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { BusinessModule } from './business/business.module';
+import { SalesPlanningModule } from './modules/sales-planning/sales-planning.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { BusinessModule } from './business/business.module';
     ProductsModule,
     ProductionPlansModule,
     ProductionOrdersModule,
+    SalesModule,
+    SalesPlanningModule,
     AiChatModule,
   ],
   controllers: [AppController],

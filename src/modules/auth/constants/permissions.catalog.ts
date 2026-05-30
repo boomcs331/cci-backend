@@ -11,6 +11,9 @@ export const PERMISSION_ACTIONS = [
   'update',
   'delete',
   'manage',
+  'approve',
+  'import',
+  'export',
 ] as const;
 
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
@@ -25,6 +28,16 @@ export const PC_RESOURCES = [
 ] as const;
 
 export type PcResource = (typeof PC_RESOURCES)[number];
+
+/** Sales module — Phase 1-3 */
+export const SALES_RESOURCES = [
+  'sales_order',
+  'sales_customer',
+  'sales_product',
+  'inventory',
+] as const;
+
+export type SalesResource = (typeof SALES_RESOURCES)[number];
 
 function perm(resource: string, action: PermissionAction): string {
   return `${resource}.${action}`;
@@ -63,6 +76,39 @@ export type PcPermissionCode =
 /** All PC permissions (for PC_ADMIN seed) */
 export const PC_PERMISSION_CODES: PcPermissionCode[] = Object.values(
   PC_PERMISSIONS,
+);
+
+export const SALES_PERMISSIONS = {
+  SALES_ORDER_CREATE: perm('sales_order', 'create'),
+  SALES_ORDER_READ: perm('sales_order', 'read'),
+  SALES_ORDER_UPDATE: perm('sales_order', 'update'),
+  SALES_ORDER_DELETE: perm('sales_order', 'delete'),
+  SALES_ORDER_MANAGE: perm('sales_order', 'manage'),
+  SALES_ORDER_APPROVE: perm('sales_order', 'approve'),
+  SALES_ORDER_IMPORT: perm('sales_order', 'import'),
+  SALES_ORDER_EXPORT: perm('sales_order', 'export'),
+
+  SALES_CUSTOMER_CREATE: perm('sales_customer', 'create'),
+  SALES_CUSTOMER_READ: perm('sales_customer', 'read'),
+  SALES_CUSTOMER_UPDATE: perm('sales_customer', 'update'),
+  SALES_CUSTOMER_DELETE: perm('sales_customer', 'delete'),
+
+  SALES_PRODUCT_CREATE: perm('sales_product', 'create'),
+  SALES_PRODUCT_READ: perm('sales_product', 'read'),
+  SALES_PRODUCT_UPDATE: perm('sales_product', 'update'),
+  SALES_PRODUCT_DELETE: perm('sales_product', 'delete'),
+
+  INVENTORY_READ: perm('inventory', 'read'),
+  INVENTORY_UPDATE: perm('inventory', 'update'),
+  INVENTORY_MANAGE: perm('inventory', 'manage'),
+} as const;
+
+export type SalesPermissionCode =
+  (typeof SALES_PERMISSIONS)[keyof typeof SALES_PERMISSIONS];
+
+/** All Sales permissions (for SALES_MANAGER seed) */
+export const SALES_PERMISSION_CODES: SalesPermissionCode[] = Object.values(
+  SALES_PERMISSIONS,
 );
 
 /** สิทธิ์ PC → legacy API */

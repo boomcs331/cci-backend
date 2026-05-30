@@ -43,6 +43,19 @@ export class Customer {
   @Column({ name: 'update_by', length: 255, nullable: true })
   updateBy: string;
 
+  // Sales-specific fields (Phase 5)
+  @Column({ name: 'credit_limit', type: 'decimal', precision: 15, scale: 2, nullable: true })
+  creditLimit: number;
+
+  @Column({ name: 'credit_balance', type: 'decimal', precision: 15, scale: 2, nullable: true })
+  creditBalance: number;
+
+  @Column({ name: 'payment_terms', length: 100, nullable: true })
+  paymentTerms: string;
+
+  @Column({ name: 'tax_id', length: 50, nullable: true })
+  taxId: string;
+
   @OneToMany(() => Product, (product) => product.customer)
   products: Product[];
 }

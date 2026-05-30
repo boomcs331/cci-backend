@@ -83,6 +83,16 @@ export class Product {
   @Column({ name: 'process_line_id', nullable: true })
   processLineId: number;
 
+  // Sales-specific fields (Phase 5)
+  @Column({ length: 50, nullable: true })
+  barcode: string;
+
+  @Column({ name: 'sale_price', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  salePrice: number;
+
+  @Column({ name: 'category_id', nullable: true })
+  categoryId: number;
+
   @Column({ type: 'text', nullable: true })
   description: string;
 
