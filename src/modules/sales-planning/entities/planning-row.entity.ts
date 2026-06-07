@@ -40,6 +40,18 @@ export class PlanningRow {
   @Column({ length: 100, nullable: true })
   model: string;
 
+  @Column({ name: 'gate', length: 50, nullable: true, type: 'varchar' })
+  gate: string | null;
+
+  @Column({ name: 'location', length: 100, nullable: true, type: 'varchar' })
+  location: string | null;
+
+  @Column({ name: 'round', type: 'int', nullable: true })
+  round: number | null;
+
+  @Column({ name: 'line', type: 'int', nullable: true })
+  line: number | null;
+
   @Column({ name: 'sale_date', type: 'date' })
   saleDate: Date;
 

@@ -22,8 +22,8 @@ export class PlanningRowRepository {
       .into(PlanningRow)
       .values(rows)
       .orUpdate(
-        ['quantity', 'status', 'error_message', 'updated_at'],
-        ['batch_id', 'customer_code', 'product_code', 'sale_date']
+        ['quantity', 'status', 'error_message', 'gate', 'location', 'round', 'line', 'updated_at'],
+        ['batch_id', 'customer_code', 'product_code', 'sale_date', 'round', 'line']
       )
       .execute();
   }

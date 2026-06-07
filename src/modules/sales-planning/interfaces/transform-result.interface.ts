@@ -11,6 +11,10 @@ export interface TransformedRow {
   quantity: number;
   originalRowNumber: number;
   status: 'VALID';
+  gate: string | null;
+  location: string | null;
+  round: number | null;
+  line: number | null;
 }
 
 export interface TransformResult {

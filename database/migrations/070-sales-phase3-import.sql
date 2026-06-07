@@ -58,7 +58,7 @@ INSERT INTO auth.menus (
   permission_codes, permission_match, allowed_departments, parent_id
 )
 VALUES
-  ('sales_import', 'นำเข้าออเดอร์ (Excel)', '/sales/import', NULL, 30, FALSE,
+  ('sales_import', 'นำเข้าออเดอร์ (Excel)', '/sales/import', NULL, 60, FALSE,
    ARRAY['sales_order.import']::text[], 'all', NULL,
    (SELECT id FROM auth.menus WHERE code = 'sales_root'))
 ON CONFLICT (code) DO UPDATE

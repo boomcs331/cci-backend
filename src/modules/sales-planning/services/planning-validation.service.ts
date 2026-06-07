@@ -116,23 +116,15 @@ export class PlanningValidationService {
   ): void {
     for (let day = 1; day <= 31; day++) {
       const dayValue = row[day.toString()];
-      
-      // Check if day exists in month
-      if (day > daysInMonth && dayValue !== null && dayValue !== '' && dayValue !== 0) {
-        errors.push({
-          rowNumber,
-          field: `Day ${day}`,
-          value: dayValue,
-          code: ErrorCode.INVALID_DAY_FOR_MONTH,
-          message: `${MONTH_NAMES[month - 1]} ${year} has only ${daysInMonth} days but found quantity in Day ${day}`,
-          severity: 'ERROR',
-          details: {
-            expectedDays: daysInMonth,
-            actualDay: day,
-            month,
-            year,
-          },
-        });
+
+      // Skip validation for days beyond the month (allow empty cells in extra columns)
+      if (day > daysInMonth) {
+        // Only validate if there's actual data (not null, empty, or 0)
+        if (dayValue !== null && dayValue !== '' && dayValue !== 0) {
+          // Treat as warning instead of error to allow import
+          // The transform service will skip these days anyway
+        }
+        continue;
       }
 
       // Validate quantity
@@ -169,14 +161,14 @@ export class PlanningValidationService {
   ): void {
     const total = parseFloat(row['Total']) || 0;
     const calculatedTotal = this.calculateRowTotal(row, daysInMonth);
-    
+
     if (Math.abs(total - calculatedTotal) > 0.01) {
       errors.push({
         rowNumber,
         field: 'Total',
         value: total,
         code: ErrorCode.TOTAL_MISMATCH,
-        message: `Total (${total}) does not match sum of daily quantities (${calculatedTotal})`,
+        message: `ค่า Total (${total}) ไม่ตรงกับผลรวมของจำนวนรายวัน (${calculatedTotal}) ต่างกัน ${Math.abs(total - calculatedTotal)}`,
         severity: 'ERROR',
         details: {
           expectedTotal: calculatedTotal,

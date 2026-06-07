@@ -6,12 +6,12 @@ INSERT INTO auth.menus (
   permission_codes, permission_match, allowed_departments, parent_id
 )
 VALUES
-  ('sales_planning', 'แผนการขาย', NULL, 'database', 20, FALSE,
+  ('sales_planning', 'แผนการขาย', NULL, 'database', 30, FALSE,
    ARRAY['sales_planning.read']::text[], 'any', NULL,
    (SELECT id FROM auth.menus WHERE code = 'sales_root'))
 ON CONFLICT (code) DO UPDATE
 SET label = EXCLUDED.label, path = EXCLUDED.path, icon_key = EXCLUDED.icon_key,
-    sort_order = EXCLUDED.sort_order, admin_only = EXCLUDED.admin_only,
+    sort_order = 30, admin_only = EXCLUDED.admin_only,
     permission_codes = EXCLUDED.permission_codes, permission_match = EXCLUDED.permission_match,
     allowed_departments = EXCLUDED.allowed_departments, parent_id = EXCLUDED.parent_id,
     is_active = TRUE, updated_at = now();

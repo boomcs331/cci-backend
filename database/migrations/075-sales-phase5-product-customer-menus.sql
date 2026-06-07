@@ -5,13 +5,17 @@ INSERT INTO auth.menus (
   permission_codes, permission_match, allowed_departments, parent_id
 )
 VALUES
-  ('sales_products', 'สินค้า (ฝั่งขาย)', '/sales/products', NULL, 30, FALSE,
+  ('sales_products', 'สินค้า (ฝั่งขาย)', '/sales/products', NULL, 70, FALSE,
    ARRAY['product.read']::text[], 'all', NULL,
    (SELECT id FROM auth.menus WHERE code = 'sales_root')),
-  ('sales_customers', 'ลูกค้า (ฝั่งขาย)', '/sales/customers', NULL, 40, FALSE,
+  ('sales_customers', 'ลูกค้า (ฝั่งขาย)', '/sales/customers', NULL, 80, FALSE,
    ARRAY['customer.read']::text[], 'all', NULL,
    (SELECT id FROM auth.menus WHERE code = 'sales_root'))
 ON CONFLICT (code) DO UPDATE
-SET label = EXCLUDED.label, path = EXCLUDED.path, sort_order = EXCLUDED.sort_order,
+SET label = EXCLUDED.label, path = EXCLUDED.path, sort_order = CASE
+  WHEN EXCLUDED.code = 'sales_products' THEN 70
+  WHEN EXCLUDED.code = 'sales_customers' THEN 80
+  ELSE EXCLUDED.sort_order
+END,
     permission_codes = EXCLUDED.permission_codes, permission_match = EXCLUDED.permission_match,
     parent_id = EXCLUDED.parent_id, is_active = TRUE, updated_at = now();

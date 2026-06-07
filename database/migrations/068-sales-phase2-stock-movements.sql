@@ -23,7 +23,7 @@ INSERT INTO auth.menus (
   permission_codes, permission_match, allowed_departments, parent_id
 )
 VALUES
-  ('sales_approvals', 'รออนุมัติออเดอร์', '/sales/approvals', NULL, 20, FALSE,
+  ('sales_approvals', 'รออนุมัติออเดอร์', '/sales/approvals', NULL, 40, FALSE,
    ARRAY['sales_order.approve']::text[], 'all', NULL,
    (SELECT id FROM auth.menus WHERE code = 'sales_root'))
 ON CONFLICT (code) DO UPDATE

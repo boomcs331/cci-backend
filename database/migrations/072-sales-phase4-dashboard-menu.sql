@@ -9,6 +9,6 @@ VALUES
    ARRAY['sales_order.read']::text[], 'all', NULL,
    (SELECT id FROM auth.menus WHERE code = 'sales_root'))
 ON CONFLICT (code) DO UPDATE
-SET label = EXCLUDED.label, path = EXCLUDED.path, sort_order = EXCLUDED.sort_order,
+SET label = EXCLUDED.label, path = EXCLUDED.path, sort_order = 10,
     permission_codes = EXCLUDED.permission_codes, permission_match = EXCLUDED.permission_match,
     parent_id = EXCLUDED.parent_id, is_active = TRUE, updated_at = now();

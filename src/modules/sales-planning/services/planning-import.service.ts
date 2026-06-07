@@ -143,6 +143,10 @@ export class PlanningImportService {
           customerId: row.customerId ?? undefined,
           productId: row.productId ?? undefined,
           model: row.model ?? undefined,
+          gate: row.gate ?? undefined,
+          location: row.location ?? undefined,
+          round: row.round ?? undefined,
+          line: row.line ?? undefined,
           status: RowStatus.VALID,
         }));
         await this.rowRepository.bulkInsert(rowsToInsert);

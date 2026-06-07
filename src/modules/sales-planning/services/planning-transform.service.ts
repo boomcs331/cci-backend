@@ -63,6 +63,10 @@ export class PlanningTransformService {
     const customerCode = row['Customer']?.trim();
     const productCode = row['Part No']?.trim();
     const model = row['Model']?.trim() || null;
+    const gate = row['Gate']?.trim() || null;
+    const location = row['Location']?.trim() || null;
+    const round = row['Round'] ? parseInt(row['Round']) : null;
+    const line = row['Line'] ? parseInt(row['Line']) : null;
 
     // Look up customer ID (with caching)
     const customer = await this.getCustomer(customerCode);
@@ -92,6 +96,10 @@ export class PlanningTransformService {
           quantity,
           originalRowNumber: rowNumber,
           status: 'VALID',
+          gate,
+          location,
+          round,
+          line,
         });
       }
     }

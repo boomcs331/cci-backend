@@ -11,50 +11,39 @@ export class PlanningTemplateController {
     // Create template workbook
     const workbook = xlsx.utils.book_new();
 
-    // Create template data
-    const templateData = [
-      {
-        Customer: 'Toyota',
-        Model: 'Camry',
-        'Part No': 'P001',
-        'Part Name': 'Brake Pad',
-        '1': 100,
-        '2': 200,
-        '3': 300,
-        '4': 0,
-        '5': 150,
-        '6': 0,
-        '7': 0,
-        '8': 0,
-        '9': 0,
-        '10': 0,
-        '11': 0,
-        '12': 0,
-        '13': 0,
-        '14': 0,
-        '15': 0,
-        '16': 0,
-        '17': 0,
-        '18': 0,
-        '19': 0,
-        '20': 0,
-        '21': 0,
-        '22': 0,
-        '23': 0,
-        '24': 0,
-        '25': 0,
-        '26': 0,
-        '27': 0,
-        '28': 0,
-        '29': 0,
-        '30': 0,
-        '31': 0,
-        Total: 750,
-      },
+    // Define headers in the correct order
+    const headers = [
+      'Customer',
+      'Model',
+      'Part No',
+      'Part Name',
+      'Gate',
+      'Location',
+      'Round',
+      'Line',
+      ...Array.from({ length: 31 }, (_, i) => (i + 1).toString()),
+      'Total'
     ];
 
-    // Create worksheet
-    const worksheet = xlsx.utils.json_to_sheet(templateData);
+    // Create template data as array of arrays
+    const templateData = [
+      headers,
+      [
+        'Toyota',
+        'Camry',
+        'P001',
+        'Brake Pad',
+        'Gate A',
+        'Warehouse 1',
+        1,
+        1,
+        100, 200, 300, 0, 150, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        750
+      ]
+    ];
+
+    // Create worksheet with aoa_to_sheet to preserve column order
+    const worksheet = xlsx.utils.aoa_to_sheet(templateData);
 
     // Set column widths
     worksheet['!cols'] = [
@@ -62,6 +51,10 @@ export class PlanningTemplateController {
       { wch: 15 }, // Model
       { wch: 15 }, // Part No
       { wch: 30 }, // Part Name
+      { wch: 12 }, // Gate
+      { wch: 15 }, // Location
+      { wch: 8 },  // Round
+      { wch: 8 },  // Line
       ...Array(31).fill({ wch: 8 }), // Day 1-31
       { wch: 10 }, // Total
     ];
