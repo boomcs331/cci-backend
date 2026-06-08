@@ -39,6 +39,8 @@ export class PlanningErrorRepository {
       errorType?: string;
       errorCode?: string;
       severity?: ErrorSeverity;
+      rowNumber?: number;
+      fieldName?: string;
     },
   ): Promise<[PlanningError[], number]> {
     const queryBuilder = this.repository
@@ -60,6 +62,18 @@ export class PlanningErrorRepository {
     if (options?.severity) {
       queryBuilder.andWhere('error.severity = :severity', {
         severity: options.severity,
+      });
+    }
+
+    if (options?.rowNumber) {
+      queryBuilder.andWhere('error.rowNumber = :rowNumber', {
+        rowNumber: options.rowNumber,
+      });
+    }
+
+    if (options?.fieldName) {
+      queryBuilder.andWhere('error.fieldName = :fieldName', {
+        fieldName: options.fieldName,
       });
     }
 

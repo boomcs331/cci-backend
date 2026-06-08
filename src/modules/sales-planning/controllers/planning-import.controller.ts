@@ -107,7 +107,7 @@ export class PlanningImportController {
   @Get(':batchId/errors')
   async getBatchErrors(
     @Param('batchId') batchId: string,
-    @Query() query?: { skip?: number; take?: number; errorType?: string; errorCode?: string },
+    @Query() query?: { skip?: number; take?: number; errorType?: string; errorCode?: string; rowNumber?: number; fieldName?: string },
   ) {
     const batchIdNum = parseInt(batchId);
     const skip = !isNaN(query?.skip || 0) ? (query?.skip || 0) : 0;
@@ -118,13 +118,17 @@ export class PlanningImportController {
       take,
       errorType: query?.errorType,
       errorCode: query?.errorCode,
+      rowNumber: query?.rowNumber,
+      fieldName: query?.fieldName,
     });
 
     return {
-      errors,
-      total,
-      skip,
-      take,
+      data: {
+        errors,
+        total,
+        skip,
+        take: Number(take),
+      },
     };
   }
 

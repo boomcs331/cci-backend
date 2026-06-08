@@ -149,7 +149,18 @@ export class PlanningImportService {
           line: row.line ?? undefined,
           status: RowStatus.VALID,
         }));
-        await this.rowRepository.bulkInsert(rowsToInsert);
+
+        // Deduplicate rows based on unique constraint (batch_id, customer_code, product_code, sale_date, round)
+        const uniqueRowsMap = new Map<string, any>();
+        for (const row of rowsToInsert) {
+          const key = `${row.batchId}-${row.customerCode}-${row.productCode}-${row.saleDate}-${row.round}`;
+          if (!uniqueRowsMap.has(key)) {
+            uniqueRowsMap.set(key, row);
+          }
+        }
+        const deduplicatedRows = Array.from(uniqueRowsMap.values());
+
+        await this.rowRepository.bulkInsert(deduplicatedRows);
       }
 
       // Save errors

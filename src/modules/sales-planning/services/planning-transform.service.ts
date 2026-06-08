@@ -66,7 +66,8 @@ export class PlanningTransformService {
     const gate = row['Gate']?.trim() || null;
     const location = row['Location']?.trim() || null;
     const round = row['Round'] ? parseInt(row['Round']) : null;
-    const line = row['Line'] ? parseInt(row['Line']) : null;
+    const lineValue = row['Line'] ? parseInt(row['Line']) : null;
+    const line = lineValue && lineValue > 0 ? lineValue : null;
 
     // Look up customer ID (with caching)
     const customer = await this.getCustomer(customerCode);
