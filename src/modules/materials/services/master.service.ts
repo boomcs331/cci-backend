@@ -11,12 +11,12 @@ import {
   Unit,
   LoadingPoint,
   ProcessLine,
-} from './entities';
+} from '../entities';
 import {
   CreateMasterDto,
   UpdateMasterDto,
   PaginationDto,
-} from './dto/master.dto';
+} from '../dto/master.dto';
 
 @Injectable()
 export class MasterService {

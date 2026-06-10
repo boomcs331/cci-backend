@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MaterialsController } from './materials.controller';
-import { MaterialsService } from './materials.service';
-import { MasterController } from './master.controller';
-import { MasterService } from './master.service';
-import { MaterialIssuesController } from './material-issues.controller';
-import { MaterialIssuesService } from './material-issues.service';
-import { UploadController } from './upload.controller';
+import { MaterialsController } from './controllers/materials.controller';
+import { MaterialsService } from './services/materials.service';
+import { MasterController } from './controllers/master.controller';
+import { MasterService } from './services/master.service';
+import { MaterialIssuesController } from './controllers/material-issues.controller';
+import { MaterialIssuesService } from './services/material-issues.service';
+import { UploadController } from './controllers/upload.controller';
 import {
   Material,
   MaterialsType,

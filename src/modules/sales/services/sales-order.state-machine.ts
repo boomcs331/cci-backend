@@ -1,4 +1,4 @@
-import type { SalesOrderStatus } from './entities';
+import type { SalesOrderStatus } from '../entities';
 
 /** สถานะที่เปลี่ยนได้จากสถานะปัจจุบัน */
 export const ORDER_TRANSITIONS: Record<

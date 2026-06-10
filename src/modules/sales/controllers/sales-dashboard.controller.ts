@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { SalesDashboardService } from './sales-dashboard.service';
-import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { SalesDashboardService } from '../services/sales-dashboard.service';
+import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator';
 
 @Controller('sales/dashboard')
 export class SalesDashboardController {

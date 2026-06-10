@@ -3,23 +3,23 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { BusinessException } from '../../shared/errors/business.exception';
-import { PcErrorCode } from '../../shared/errors/pc-error.codes';
-import { pcInsufficientStockMessage } from '../../shared/errors/pc-insufficient-stock.message';
+import { BusinessException } from '../../../shared/errors/business.exception';
+import { PcErrorCode } from '../../../shared/errors/pc-error.codes';
+import { pcInsufficientStockMessage } from '../../../shared/errors/pc-insufficient-stock.message';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { MaterialIssue } from './entities/material-issue.entity';
-import { MaterialIssueItem } from './entities/material-issue-item.entity';
-import { MaterialIssueDocument } from './entities/material-issue-document.entity';
-import { Material } from './entities/material.entity';
-import { MaterialsStock } from './entities/materials-stock.entity';
-import { Product } from '../products/entities/product.entity';
-import { ProductBom } from '../products/entities/product-bom.entity';
+import { MaterialIssue } from '../entities/material-issue.entity';
+import { MaterialIssueItem } from '../entities/material-issue-item.entity';
+import { MaterialIssueDocument } from '../entities/material-issue-document.entity';
+import { Material } from '../entities/material.entity';
+import { MaterialsStock } from '../entities/materials-stock.entity';
+import { Product } from '../../products/entities/product.entity';
+import { ProductBom } from '../../products/entities/product-bom.entity';
 import {
   CreateManualIssueDto,
   CreateProductionIssueDto,
   PreviewProductionIssueDto,
-} from './dto/material-issue.dto';
+} from '../dto/material-issue.dto';
 
 @Injectable()
 export class MaterialIssuesService {

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ResponseHelper } from '@app/common';
-import { SalesOrder } from './entities/order.entity';
+import { SalesOrder } from '../entities/order.entity';
 
 export interface DashboardKPI {
   totalOrders: number;

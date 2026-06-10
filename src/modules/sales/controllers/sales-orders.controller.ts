@@ -11,7 +11,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { SalesOrdersService } from './sales-orders.service';
+import { SalesOrdersService } from '../services/sales-orders.service';
 import {
   CreateOrderDto,
   UpdateOrderDto,
@@ -19,9 +19,9 @@ import {
   RejectOrderDto,
   TransitionOrderStatusDto,
   CancelOrderDto,
-} from './dto';
-import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
-import { AuthUserService } from '../auth/services/auth-user.service';
+} from '../dto';
+import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator';
+import { AuthUserService } from '../../auth/services/auth-user.service';
 
 @Controller('sales/orders')
 export class SalesOrdersController {

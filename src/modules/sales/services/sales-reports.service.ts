@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ResponseHelper } from '@app/common';
-import { SalesOrder, OrderItem } from './entities';
+import { SalesOrder, OrderItem } from '../entities';
 
 export interface SalesByCustomer {
   customerId: number;

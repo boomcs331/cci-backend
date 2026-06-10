@@ -10,7 +10,7 @@ import {
   Query,
   Patch,
 } from '@nestjs/common';
-import { MaterialsService } from './materials.service';
+import { MaterialsService } from '../services/materials.service';
 import {
   CreateMaterialDto,
   UpdateMaterialDto,
@@ -20,7 +20,7 @@ import {
   StockTransactionDto,
   CreateSupplierDto,
   UpdateSupplierDto,
-} from './dto/materials.dto';
+} from '../dto/materials.dto';
 import { ResponseHelper } from '@app/common';
 
 @Controller('materials')

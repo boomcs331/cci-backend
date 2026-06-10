@@ -7,12 +7,12 @@ import {
   ParseIntPipe,
   Query,
 } from '@nestjs/common';
-import { MaterialIssuesService } from './material-issues.service';
+import { MaterialIssuesService } from '../services/material-issues.service';
 import {
   CreateManualIssueDto,
   CreateProductionIssueDto,
   PreviewProductionIssueDto,
-} from './dto/material-issue.dto';
+} from '../dto/material-issue.dto';
 import { ResponseHelper } from '@app/common';
 
 @Controller('material-issues')

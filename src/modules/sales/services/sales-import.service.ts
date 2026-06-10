@@ -2,10 +2,10 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ResponseHelper } from '@app/common';
-import { Customer } from '../products/entities/customer.entity';
-import { Product } from '../products/entities/product.entity';
-import { ImportBatch, ImportRow, type ImportBatchStatus, type ImportRowStatus } from './entities';
-import { ImportRowDto } from './dto/import-row.dto';
+import { Customer } from '../../products/entities/customer.entity';
+import { Product } from '../../products/entities/product.entity';
+import { ImportBatch, ImportRow, type ImportBatchStatus, type ImportRowStatus } from '../entities';
+import { ImportRowDto } from '../dto/import-row.dto';
 import { SalesOrdersService } from './sales-orders.service';
 import * as xlsx from 'xlsx';
 

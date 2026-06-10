@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
-import { ProductsStock } from '../products/entities/products-stock.entity';
-import { ProductStockMovement } from './entities/product-stock-movement.entity';
-import { OrderItem } from './entities';
+import { ProductsStock } from '../../products/entities/products-stock.entity';
+import { ProductStockMovement } from '../entities/product-stock-movement.entity';
+import { OrderItem } from '../entities';
 
 const REF_TYPE = 'SALES_ORDER';
 

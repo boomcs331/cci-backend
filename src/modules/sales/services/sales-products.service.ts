@@ -2,8 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ResponseHelper } from '@app/common';
-import { Product } from '../products/entities/product.entity';
-import { ProductsStock } from '../products/entities/products-stock.entity';
+import { Product } from '../../products/entities/product.entity';
+import { ProductsStock } from '../../products/entities/products-stock.entity';
 
 export interface SalesProductDto {
   id: number;

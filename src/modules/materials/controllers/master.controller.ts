@@ -11,19 +11,19 @@ import {
   BadRequestException,
   Patch,
 } from '@nestjs/common';
-import { MasterService } from './master.service';
-import { MaterialsService } from './materials.service';
+import { MasterService } from '../services/master.service';
+import { MaterialsService } from '../services/materials.service';
 import {
   CreateMasterDto,
   UpdateMasterDto,
   PaginationDto,
-} from './dto/master.dto';
+} from '../dto/master.dto';
 import {
   CreateSupplierDto,
   UpdateSupplierDto,
   CreateMaterialsTypeDto,
   CreateMaterialsLocationDto,
-} from './dto/materials.dto';
+} from '../dto/materials.dto';
 import { ResponseHelper } from '@app/common';
 
 @Controller('masters')

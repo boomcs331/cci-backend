@@ -1,8 +1,8 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
-import { SalesCustomersService } from './sales-customers.service';
-import type { CreateSalesCustomerDto, UpdateSalesCustomerDto } from './sales-customers.service';
-import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { SalesCustomersService } from '../services/sales-customers.service';
+import type { CreateSalesCustomerDto, UpdateSalesCustomerDto } from '../services/sales-customers.service';
+import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator';
 
 @Controller('sales/customers')
 export class SalesCustomersController {

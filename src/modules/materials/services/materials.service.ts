@@ -4,9 +4,9 @@ import {
   ConflictException,
   HttpStatus,
 } from '@nestjs/common';
-import { BusinessException } from '../../shared/errors/business.exception';
-import { PcErrorCode } from '../../shared/errors/pc-error.codes';
-import { pcInsufficientStockMessage } from '../../shared/errors/pc-insufficient-stock.message';
+import { BusinessException } from '../../../shared/errors/business.exception';
+import { PcErrorCode } from '../../../shared/errors/pc-error.codes';
+import { pcInsufficientStockMessage } from '../../../shared/errors/pc-insufficient-stock.message';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import {
@@ -20,7 +20,7 @@ import {
   Unit,
   LoadingPoint,
   ProcessLine,
-} from './entities';
+} from '../entities';
 import {
   CreateMaterialDto,
   UpdateMaterialDto,
@@ -29,8 +29,8 @@ import {
   StockTransactionDto,
   CreateSupplierDto,
   UpdateSupplierDto,
-} from './dto/materials.dto';
-import { PaginationDto } from './dto/master.dto';
+} from '../dto/materials.dto';
+import { PaginationDto } from '../dto/master.dto';
 
 @Injectable()
 export class MaterialsService {

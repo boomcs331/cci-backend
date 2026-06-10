@@ -6,22 +6,22 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ResponseHelper } from '@app/common';
-import { Customer } from '../products/entities/customer.entity';
+import { Customer } from '../../products/entities/customer.entity';
 import {
   SalesOrder,
   OrderItem,
   OrderStatusHistory,
   OrderApproval,
   type SalesOrderStatus,
-} from './entities';
+} from '../entities';
 import {
   CreateOrderDto,
   UpdateOrderDto,
   QueryOrdersDto,
   RejectOrderDto,
   CancelOrderDto,
-} from './dto';
-import type { TransitionOrderStatusDto } from './dto';
+} from '../dto';
+import type { TransitionOrderStatusDto } from '../dto';
 import { SalesInventoryService } from './sales-inventory.service';
 import {
   canTransition,

@@ -1,18 +1,18 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { SalesOrdersController } from './sales-orders.controller';
-import { SalesOrdersService } from './sales-orders.service';
-import { SalesInventoryService } from './sales-inventory.service';
-import { SalesImportController } from './sales-import.controller';
-import { SalesImportService } from './sales-import.service';
-import { SalesDashboardController } from './sales-dashboard.controller';
-import { SalesDashboardService } from './sales-dashboard.service';
-import { SalesReportsController } from './sales-reports.controller';
-import { SalesReportsService } from './sales-reports.service';
-import { SalesProductsController } from './sales-products.controller';
-import { SalesProductsService } from './sales-products.service';
-import { SalesCustomersController } from './sales-customers.controller';
-import { SalesCustomersService } from './sales-customers.service';
+import { SalesOrdersController } from './controllers/sales-orders.controller';
+import { SalesOrdersService } from './services/sales-orders.service';
+import { SalesInventoryService } from './services/sales-inventory.service';
+import { SalesImportController } from './controllers/sales-import.controller';
+import { SalesImportService } from './services/sales-import.service';
+import { SalesDashboardController } from './controllers/sales-dashboard.controller';
+import { SalesDashboardService } from './services/sales-dashboard.service';
+import { SalesReportsController } from './controllers/sales-reports.controller';
+import { SalesReportsService } from './services/sales-reports.service';
+import { SalesProductsController } from './controllers/sales-products.controller';
+import { SalesProductsService } from './services/sales-products.service';
+import { SalesCustomersController } from './controllers/sales-customers.controller';
+import { SalesCustomersService } from './services/sales-customers.service';
 import {
   SalesOrder,
   OrderItem,

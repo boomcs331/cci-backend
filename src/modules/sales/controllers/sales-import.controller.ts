@@ -13,10 +13,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { SalesImportService } from './sales-import.service';
-import { ImportCommitDto } from './dto/import-commit.dto';
-import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
-import { AuthUserService } from '../auth/services/auth-user.service';
+import { SalesImportService } from '../services/sales-import.service';
+import { ImportCommitDto } from '../dto/import-commit.dto';
+import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator';
+import { AuthUserService } from '../../auth/services/auth-user.service';
 
 @Controller('sales/import')
 export class SalesImportController {
