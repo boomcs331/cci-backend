@@ -37,6 +37,9 @@ import {
 } from './dto';
 import { AuthUserService } from '../auth/services/auth-user.service';
 import { User } from '../auth/entities/user.entity';
+import { ProductionAuthorizationService } from './services/production-authorization.service';
+import { ProductionTrackingService } from './services/production-tracking.service';
+import { ProductionWorkflowService } from './services/production-workflow.service';
 
 @Injectable()
 export class ProductionOrdersService {
@@ -53,147 +56,15 @@ export class ProductionOrdersService {
     private productRepo: Repository<Product>,
     private dataSource: DataSource,
     private readonly productStockService: ProductStockService,
+    private readonly authorizationService: ProductionAuthorizationService,
+    private readonly workflowService: ProductionWorkflowService,
+    private readonly trackingService: ProductionTrackingService,
     private readonly authUserService: AuthUserService,
     private readonly qrScanLogService: QrScanLogService,
   ) {}
 
-  /** ค่า operator ที่เป็นตัวเลขล้วน = user id จาก client เก่า — แปลงเป็น username (login) */
-  private looksLikeUserId(value: string): boolean {
-    return /^\d+$/.test(value.trim());
-  }
-
-  private async resolveOperatorLogin(
-    dtoOperator?: string,
-    user?: User | null,
-  ): Promise<string> {
-    const fromUser = user?.username?.trim();
-    if (fromUser) return fromUser;
-
-    const raw = dtoOperator?.trim();
-    if (!raw) return 'scanner';
-
-    if (this.looksLikeUserId(raw)) {
-      try {
-        const u = await this.authUserService.findUserById(raw);
-        const login = u.username?.trim();
-        if (login) return login;
-      } catch {
-        /* keep raw */
-      }
-    }
-    return raw;
-  }
-
-  private async operatorLoginFromStored(
-    stored: string | null | undefined,
-  ): Promise<string | null> {
-    const raw = stored?.trim();
-    if (!raw) return null;
-    if (!this.looksLikeUserId(raw)) return raw;
-    try {
-      const u = await this.authUserService.findUserById(raw);
-      return u.username?.trim() || raw;
-    } catch {
-      return raw;
-    }
-  }
-
-  private async enrichOrderTrackingOperators(order: ProductionOrder): Promise<void> {
-    const cache = new Map<string, string>();
-    for (const lot of order.lots ?? []) {
-      for (const t of lot.tracking ?? []) {
-        const op = t.operator?.trim();
-        if (!op || !this.looksLikeUserId(op) || cache.has(op)) continue;
-        const login = await this.operatorLoginFromStored(op);
-        if (login) cache.set(op, login);
-      }
-    }
-    for (const lot of order.lots ?? []) {
-      for (const t of lot.tracking ?? []) {
-        const op = t.operator?.trim();
-        if (op && cache.has(op)) t.operator = cache.get(op)!;
-      }
-    }
-  }
-
-  private userIsAdminGlobal(user: User | null | undefined): boolean {
-    if (!user) return false;
-    const fromDirect = user.roles?.some((r) => r.code === 'ADMIN_GLOBAL');
-    if (fromDirect) return true;
-    return (
-      user.roleAssignments?.some((a) => a.role?.code === 'ADMIN_GLOBAL') ??
-      false
-    );
-  }
-
-  /** รหัสแผนกที่ใช้เทียบ allowed_department_codes (รองรับ WE↔WELDING, PD↔PRESS) */
-  private departmentCodesForGate(deptCode: string): string[] {
-    const trimmed = deptCode.trim();
-    const upper = trimmed.toUpperCase();
-    const codes = new Set<string>([trimmed, upper]);
-    if (upper === 'WE' || upper === 'WELDING') {
-      codes.add('WE');
-      codes.add('WELDING');
-    }
-    if (upper === 'PD' || upper === 'PRESS' || upper === 'PRESS_FIT') {
-      codes.add('PD');
-      codes.add('PRESS');
-      codes.add('PRESS_FIT');
-    }
-    return [...codes];
-  }
-
   /** คำสั่งผลิตที่ยังเปิดงานได้ (รวม DRAFT — ล็อต QR มักพร้อมที่ขั้นแรกก่อนกด start order) */
   private static readonly OPEN_ORDER_STATUSES = ['DRAFT', 'IN_PROGRESS'] as const;
-
-  private applyDeptProcessGate(
-    qb: SelectQueryBuilder<ProductionLot>,
-    gateCodes: string[],
-    processAlias = 'process',
-  ): void {
-    if (!gateCodes.length) {
-      qb.andWhere('1 = 0');
-      return;
-    }
-    qb.andWhere(
-      new Brackets((sub) => {
-        sub.where(`${processAlias}.allowedDepartmentCodes IS NULL`);
-        gateCodes.forEach((code, idx) => {
-          const param = `deptGate${idx}`;
-          sub.orWhere(
-            `:${param} = ANY(${processAlias}.allowedDepartmentCodes)`,
-            { [param]: code },
-          );
-        });
-      }),
-    );
-  }
-
-  private deptAllowedForProcess(
-    process: ProductionProcess | null | undefined,
-    gateCodes: string[],
-  ): boolean {
-    if (!process) return false;
-    const allowed = process.allowedDepartmentCodes;
-    if (!allowed?.length) return true;
-    if (!gateCodes.length) return false;
-    return allowed.some((a) =>
-      gateCodes.some(
-        (g) => g.toUpperCase() === String(a ?? '').trim().toUpperCase(),
-      ),
-    );
-  }
-
-  private canUserActOnProcess(
-    process: ProductionProcess,
-    user: User | null,
-    isGlobal: boolean,
-  ): boolean {
-    if (isGlobal) return true;
-    if (!user) return false;
-    const gateCodes = this.authUserService.expandedGateCodesForUser(user);
-    return this.deptAllowedForProcess(process, gateCodes);
-  }
 
   private async resolveOrderedProcesses(
     manager: EntityManager,
@@ -227,7 +98,7 @@ export class ProductionOrdersService {
     const user = userId
       ? await this.authUserService.findUserById(userId)
       : null;
-    const isGlobal = this.userIsAdminGlobal(user);
+    const isGlobal = this.authorizationService.userIsAdminGlobal(user);
     const userDept = user?.department?.code ?? null;
 
     const orderedProcesses = await this.resolveOrderedProcesses(
@@ -267,12 +138,12 @@ export class ProductionOrdersService {
       expectedProcEntity &&
         !inProgress &&
         lot.status !== 'COMPLETED' &&
-        this.canUserActOnProcess(expectedProcEntity, user, isGlobal),
+        this.authorizationService.canUserActOnProcess(expectedProcEntity, user, isGlobal),
     );
 
     const canComplete = Boolean(
       inProgEntity &&
-        this.canUserActOnProcess(inProgEntity, user, isGlobal),
+        this.authorizationService.canUserActOnProcess(inProgEntity, user, isGlobal),
     );
 
     let denyReason: string | null = null;
@@ -486,7 +357,7 @@ export class ProductionOrdersService {
     if (!['PENDING', 'IN_PROGRESS'].includes(lot.status)) {
       return false;
     }
-    return this.deptAllowedForProcess(lot.currentProcess, gateCodes);
+    return this.authorizationService.deptAllowedForProcess(lot.currentProcess, gateCodes);
   }
 
   private attachDeptBacklogSummary(
@@ -523,7 +394,7 @@ export class ProductionOrdersService {
     activeDepartmentId?: string,
   ) {
     const user = userId ? await this.authUserService.findUserById(userId) : null;
-    const isGlobal = this.userIsAdminGlobal(user);
+    const isGlobal = this.authorizationService.userIsAdminGlobal(user);
 
     if (isGlobal) {
       const [orders, total] = await this.orderRepo.findAndCount({
@@ -584,7 +455,7 @@ export class ProductionOrdersService {
         openOrders: [...ProductionOrdersService.OPEN_ORDER_STATUSES],
       })
       .andWhere('process.id IS NOT NULL');
-    this.applyDeptProcessGate(idQb, gateCodes);
+    this.authorizationService.applyDeptProcessGate(idQb, gateCodes);
     const idRows = await idQb
       .groupBy('order.id')
       .orderBy('MAX(order.createDate)', 'DESC')
@@ -653,7 +524,7 @@ export class ProductionOrdersService {
       ],
     });
     if (!order) throw new NotFoundException('Order not found');
-    await this.enrichOrderTrackingOperators(order);
+    await this.authorizationService.enrichOrderTrackingOperators(order);
     return order;
   }
 
@@ -685,7 +556,7 @@ export class ProductionOrdersService {
     const user = userId
       ? await this.authUserService.findUserById(userId)
       : null;
-    const isGlobal = this.userIsAdminGlobal(user);
+    const isGlobal = this.authorizationService.userIsAdminGlobal(user);
 
     return await this.dataSource.transaction(async (manager) => {
       const lot = await manager.findOne(ProductionLot, {
@@ -749,13 +620,13 @@ export class ProductionOrdersService {
         );
       }
 
-      if (!this.canUserActOnProcess(process, user, isGlobal)) {
+      if (!this.authorizationService.canUserActOnProcess(process, user, isGlobal)) {
         throw new ForbiddenException(
           'Your department is not allowed to start this step',
         );
       }
 
-      const operator = await this.resolveOperatorLogin(dto.operator, user);
+      const operator = await this.authorizationService.resolveOperatorLogin(dto.operator, user);
 
       const qtyIn = Number(lot.quantity);
       const tracking = manager.create(ProductionLotTracking, {
@@ -815,7 +686,7 @@ export class ProductionOrdersService {
     const user = userId
       ? await this.authUserService.findUserById(userId)
       : null;
-    const isGlobal = this.userIsAdminGlobal(user);
+    const isGlobal = this.authorizationService.userIsAdminGlobal(user);
 
     return await this.dataSource.transaction(async (manager) => {
       const lot = await manager.findOne(ProductionLot, {
@@ -846,7 +717,7 @@ export class ProductionOrdersService {
         }));
       if (!processRow) throw new NotFoundException('Process not found');
 
-      if (!this.canUserActOnProcess(processRow, user, isGlobal)) {
+      if (!this.authorizationService.canUserActOnProcess(processRow, user, isGlobal)) {
         throw new ForbiddenException(
           'Your department is not allowed to complete this step',
         );
@@ -890,7 +761,7 @@ export class ProductionOrdersService {
 
       let finalizedByAutoComplete = false;
       if (lot.status !== 'COMPLETED') {
-        finalizedByAutoComplete = await this.autoCloseTerminalCompleteStep(
+        finalizedByAutoComplete = await this.workflowService.autoCloseTerminalCompleteStep(
           manager,
           lot,
           orderedProcesses,
@@ -956,7 +827,7 @@ export class ProductionOrdersService {
 
   async splitLot(qrCode: string, dto: SplitLotDto, userId?: string) {
     const user = userId ? await this.authUserService.findUserById(userId) : null;
-    const code = this.normalizeLotLookupCode(qrCode);
+    const code = this.trackingService.normalizeLotLookupCode(qrCode);
     const moveReleasedToNextStep = dto.moveReleasedToNextStep !== false;
 
     return this.dataSource.transaction(async (manager) => {
@@ -1027,7 +898,7 @@ export class ProductionOrdersService {
       const childOrderLabelA = `${childOrderLabelBase}-S${String(splitRunA).padStart(2, '0')}`;
       const childOrderLabelB = `${childOrderLabelBase}-S${String(splitRunB).padStart(2, '0')}`;
 
-      const operator = await this.resolveOperatorLogin(dto.operator, user);
+      const operator = await this.authorizationService.resolveOperatorLogin(dto.operator, user);
       const reason = dto.reason?.trim();
       if (!reason) {
         throw new BadRequestException('reason is required');
@@ -1113,9 +984,9 @@ export class ProductionOrdersService {
         lot.splitReason = reason;
         const savedKeptQr = await manager.save(lot);
 
-        const terminalComplete = this.getTerminalCompleteProcess(orderedProcesses);
+        const terminalComplete = this.workflowService.getTerminalCompleteProcess(orderedProcesses);
         if (terminalComplete && terminalComplete.id === nextProcessId) {
-          await this.autoCloseTerminalCompleteStep(
+          await this.workflowService.autoCloseTerminalCompleteStep(
             manager,
             savedKeptQr,
             orderedProcesses,
@@ -1155,7 +1026,7 @@ export class ProductionOrdersService {
         });
         const savedRemaining = await manager.save(remaining);
 
-        await this.inheritPriorProcessTrackingFromParent(
+        await this.trackingService.inheritPriorProcessTrackingFromParent(
           manager,
           lot,
           savedRemaining.id,
@@ -1163,7 +1034,7 @@ export class ProductionOrdersService {
           orderedProcesses,
           currentProcessId,
         );
-        await this.applyRemainingLotWorkflowAfterSplit(manager, savedRemaining, {
+        await this.workflowService.applyRemainingLotWorkflowAfterSplit(manager, savedRemaining, {
           remainingQty,
           currentProcessId,
           parentWasInProgress: false,
@@ -1258,7 +1129,7 @@ export class ProductionOrdersService {
       const savedRemaining = await manager.save(remaining);
 
       if (currentProcessId) {
-        await this.inheritPriorProcessTrackingFromParent(
+        await this.trackingService.inheritPriorProcessTrackingFromParent(
           manager,
           lot,
           savedReleased.id,
@@ -1266,7 +1137,7 @@ export class ProductionOrdersService {
           orderedProcesses,
           currentProcessId,
         );
-        await this.inheritPriorProcessTrackingFromParent(
+        await this.trackingService.inheritPriorProcessTrackingFromParent(
           manager,
           lot,
           savedRemaining.id,
@@ -1275,7 +1146,7 @@ export class ProductionOrdersService {
           currentProcessId,
         );
 
-        await this.applyReleasedLotWorkflowAfterSplit(
+        await this.workflowService.applyReleasedLotWorkflowAfterSplit(
           manager,
           savedReleased,
           {
@@ -1287,8 +1158,11 @@ export class ProductionOrdersService {
             reason,
             parentLotNo: lot.lotNo,
           },
+          this.resolveOrderedProcesses.bind(this),
+          this.workflowService.getTerminalCompleteProcess.bind(this.workflowService),
+          this.workflowService.autoCloseTerminalCompleteStep.bind(this.workflowService),
         );
-        await this.applyRemainingLotWorkflowAfterSplit(
+        await this.workflowService.applyRemainingLotWorkflowAfterSplit(
           manager,
           savedRemaining,
           {
@@ -1345,7 +1219,7 @@ export class ProductionOrdersService {
   }
 
   async getLotStepQuantities(qrCode: string, _userId?: string) {
-    const code = this.normalizeLotLookupCode(qrCode);
+    const code = this.trackingService.normalizeLotLookupCode(qrCode);
     const lot = await this.lotRepo.findOne({
       where: [{ qrCode: code }, { lotNo: code }],
       relations: [
@@ -1367,7 +1241,7 @@ export class ProductionOrdersService {
       order: { id: 'ASC' },
     });
 
-    return this.buildLotStepTracePayload(lot, childLots);
+    return this.trackingService.buildLotStepTracePayload(lot, childLots, this.resolveOrderedProcesses.bind(this), this.dataSource.manager);
   }
 
   async getLotStepTraceReport(filters: {
@@ -1455,9 +1329,11 @@ export class ProductionOrdersService {
 
     const data = await Promise.all(
       lots.map((lot) =>
-        this.buildLotStepTracePayload(
+        this.trackingService.buildLotStepTracePayload(
           lot,
           childrenByParent.get(lot.id) ?? [],
+          this.resolveOrderedProcesses.bind(this),
+          this.dataSource.manager,
         ),
       ),
     );
@@ -1472,84 +1348,8 @@ export class ProductionOrdersService {
     };
   }
 
-  private async buildLotStepTracePayload(
-    lot: ProductionLot,
-    childLots: ProductionLot[] = [],
-  ) {
-    const orderedProcesses = await this.resolveOrderedProcesses(
-      this.dataSource.manager,
-      lot.order.productId,
-    );
-
-    const trackingByProcess = new Map(
-      (lot.tracking ?? []).map((t) => [t.processId, t]),
-    );
-
-    const steps = await Promise.all(
-      orderedProcesses.map(async (proc, idx) => {
-        const t = trackingByProcess.get(proc.id);
-        let stepStatus: 'pending' | 'in_progress' | 'completed' | 'rejected' =
-          'pending';
-        if (t?.status === 'IN_PROGRESS') stepStatus = 'in_progress';
-        else if (t?.status === 'COMPLETED') stepStatus = 'completed';
-        else if (t?.status === 'REJECTED') stepStatus = 'rejected';
-
-        let qtyIn = t?.quantityIn != null ? Number(t.quantityIn) : null;
-        let qtyOut = t?.quantityOut != null ? Number(t.quantityOut) : null;
-
-        if (t && qtyIn == null) {
-          qtyIn = Number(lot.quantity);
-        }
-        if (t?.status === 'COMPLETED' && qtyOut == null) {
-          qtyOut = Number(lot.quantity);
-        }
-
-        const operator =
-          t?.operator != null
-            ? (await this.operatorLoginFromStored(t.operator)) ?? t.operator
-            : null;
-
-        return {
-          stepOrder: idx + 1,
-          processId: proc.id,
-          processCode: proc.processCode,
-          processName: proc.processName,
-          status: stepStatus,
-          quantityIn: qtyIn,
-          quantityOut: qtyOut,
-          operator,
-          startTime: t?.startTime ?? null,
-          endTime: t?.endTime ?? null,
-          remarks: t?.remarks ?? null,
-        };
-      }),
-    );
-
-    return {
-      lotId: lot.id,
-      lotNo: lot.lotNo,
-      qrCode: lot.qrCode,
-      lotQuantity: Number(lot.quantity),
-      lotStatus: lot.status,
-      lotCreatedAt: lot.createDate ?? null,
-      orderNo: lot.order.orderNo,
-      productId: lot.order.productId,
-      productCode: lot.order.product?.productCode ?? null,
-      productName: lot.order.product?.productName ?? null,
-      unit: 'PCS',
-      steps,
-      splitChildren: childLots.map((c) => ({
-        lotNo: c.lotNo,
-        qrCode: c.qrCode,
-        quantity: Number(c.quantity),
-        status: c.status,
-        splitReason: c.splitReason ?? null,
-      })),
-    };
-  }
-
   async getLotStation(qrCode: string, userId?: string) {
-    const code = this.normalizeLotLookupCode(qrCode);
+    const code = this.trackingService.normalizeLotLookupCode(qrCode);
     const lot = await this.lotRepo.findOne({
       where: [{ qrCode: code }, { lotNo: code }],
       relations: [
@@ -1594,7 +1394,7 @@ export class ProductionOrdersService {
   }
 
   async getLotTracking(qrCode: string, userId?: string) {
-    const code = this.normalizeLotLookupCode(qrCode);
+    const code = this.trackingService.normalizeLotLookupCode(qrCode);
     const lot = await this.lotRepo.findOne({
       where: [{ qrCode: code }, { lotNo: code }],
       relations: [
@@ -1634,7 +1434,7 @@ export class ProductionOrdersService {
         endTime: t.endTime ?? null,
         quantityIn: t.quantityIn != null ? Number(t.quantityIn) : null,
         quantityOut: t.quantityOut != null ? Number(t.quantityOut) : null,
-        operator: (await this.operatorLoginFromStored(t.operator)) ?? null,
+        operator: (await this.authorizationService.operatorLoginFromStored(t.operator)) ?? null,
         remarks: t.remarks ?? null,
       })),
     );
@@ -1642,7 +1442,7 @@ export class ProductionOrdersService {
   }
 
   async getLotLineage(qrCode: string, _userId?: string) {
-    const code = this.normalizeLotLookupCode(qrCode);
+    const code = this.trackingService.normalizeLotLookupCode(qrCode);
     const lot = await this.lotRepo.findOne({
       where: [{ qrCode: code }, { lotNo: code }],
       relations: ['currentProcess', 'order', 'order.product'],
@@ -1695,7 +1495,7 @@ export class ProductionOrdersService {
     activeDepartmentId?: string,
   ) {
     const user = userId ? await this.authUserService.findUserById(userId) : null;
-    const isGlobal = this.userIsAdminGlobal(user);
+    const isGlobal = this.authorizationService.userIsAdminGlobal(user);
 
     const gateCodes = isGlobal
       ? user
@@ -1763,7 +1563,7 @@ export class ProductionOrdersService {
         .andWhere('order.status IN (:...openOrders)', {
           openOrders: [...ProductionOrdersService.OPEN_ORDER_STATUSES],
         });
-      this.applyDeptProcessGate(qb, gateCodes);
+      this.authorizationService.applyDeptProcessGate(qb, gateCodes);
     }
 
     const rows = (await qb.getRawMany()) as Array<{
@@ -1794,7 +1594,7 @@ export class ProductionOrdersService {
   }
 
   async getLotStatus(qrCode: string, userId?: string) {
-    const code = this.normalizeLotLookupCode(qrCode);
+    const code = this.trackingService.normalizeLotLookupCode(qrCode);
     const lot = await this.lotRepo.findOne({
       where: [{ qrCode: code }, { lotNo: code }],
       relations: [
@@ -1833,7 +1633,7 @@ export class ProductionOrdersService {
         status: t.status,
         quantityIn: t.quantityIn != null ? Number(t.quantityIn) : null,
         quantityOut: t.quantityOut != null ? Number(t.quantityOut) : null,
-        operator: (await this.operatorLoginFromStored(t.operator)) ?? t.operator,
+        operator: (await this.authorizationService.operatorLoginFromStored(t.operator)) ?? t.operator,
         remarks: t.remarks,
         duration:
           t.endTime && t.startTime
@@ -1878,338 +1678,6 @@ export class ProductionOrdersService {
     });
 
     return payload;
-  }
-
-  private normalizeProcessCode(code: string): string {
-    return code.trim().toUpperCase();
-  }
-
-  /** ขั้นสุดท้ายของ flow ที่เป็น process_code COMPLETE (ไม่มีขั้นถัดไป) */
-  private getTerminalCompleteProcess(
-    orderedProcesses: ProductionProcess[],
-  ): ProductionProcess | null {
-    if (orderedProcesses.length < 2) return null;
-    const last = orderedProcesses[orderedProcesses.length - 1];
-    if (this.normalizeProcessCode(last.processCode) !== 'COMPLETE') return null;
-    return last;
-  }
-
-  private async resolveOrderedProcessesForLot(
-    manager: EntityManager,
-    lot: ProductionLot,
-  ): Promise<ProductionProcess[]> {
-    const order =
-      lot.order ??
-      (await manager.findOne(ProductionOrder, { where: { id: lot.orderId } }));
-    if (!order) return [];
-    return this.resolveOrderedProcesses(manager, order.productId);
-  }
-
-  /**
-   * เมื่อขั้นก่อน Complete (ขั้นสุดท้ายของ flow) ปิดแล้ว — ปิด Complete ทันที
-   * ไม่สร้าง IN_PROGRESS / คิวงานสำหรับ Complete
-   */
-  private async autoCloseTerminalCompleteStep(
-    manager: EntityManager,
-    lot: ProductionLot,
-    orderedProcesses: ProductionProcess[],
-    operator: string,
-    stockCreateBy: string,
-    remarks?: string,
-  ): Promise<boolean> {
-    const completeProc = this.getTerminalCompleteProcess(orderedProcesses);
-    if (!completeProc) return false;
-
-    const prevProc = orderedProcesses[orderedProcesses.length - 2];
-    const prevClosed = await manager.findOne(ProductionLotTracking, {
-      where: { lotId: lot.id, processId: prevProc.id, status: 'COMPLETED' },
-    });
-    if (!prevClosed) return false;
-
-    const alreadyDone = await manager.findOne(ProductionLotTracking, {
-      where: { lotId: lot.id, processId: completeProc.id, status: 'COMPLETED' },
-    });
-    if (alreadyDone) {
-      if (lot.status !== 'COMPLETED') {
-        lot.status = 'COMPLETED';
-        lot.currentProcessId = undefined;
-        await manager.save(lot);
-      }
-      return true;
-    }
-
-    const now = new Date();
-    const qty = Number(lot.quantity);
-    const autoRemark = remarks?.trim()
-      ? `${remarks.trim()} · ปิด Complete อัตโนมัติ`
-      : 'ปิด Complete อัตโนมัติ';
-
-    const openComplete = await manager.findOne(ProductionLotTracking, {
-      where: {
-        lotId: lot.id,
-        processId: completeProc.id,
-        status: 'IN_PROGRESS',
-      },
-    });
-    if (openComplete) {
-      openComplete.status = 'COMPLETED';
-      openComplete.endTime = now;
-      openComplete.quantityOut = qty;
-      if (openComplete.quantityIn == null) {
-        openComplete.quantityIn = qty;
-      }
-      openComplete.remarks = openComplete.remarks?.trim()
-        ? `${openComplete.remarks} · ${autoRemark}`
-        : autoRemark;
-      await manager.save(openComplete);
-    } else {
-      await manager.save(
-        manager.create(ProductionLotTracking, {
-          lotId: lot.id,
-          processId: completeProc.id,
-          startTime: now,
-          endTime: now,
-          status: 'COMPLETED',
-          operator,
-          quantityIn: qty,
-          quantityOut: qty,
-          remarks: autoRemark,
-        }),
-      );
-    }
-
-    const prevLotStatus = lot.status;
-    lot.status = 'COMPLETED';
-    lot.currentProcessId = undefined;
-    await manager.save(lot);
-
-    if (prevLotStatus !== 'COMPLETED') {
-      const order =
-        lot.order ??
-        (await manager.findOne(ProductionOrder, {
-          where: { id: lot.orderId },
-        }));
-      if (order) {
-        await this.productStockService.addFinishedGoodsFromLot(
-          manager,
-          order.productId,
-          lot.quantity,
-          {
-            productionLotId: lot.id,
-            productionLotNo: lot.lotNo,
-            productionQrCode: lot.qrCode,
-            productionOrderNo: order.orderNo,
-            createBy: stockCreateBy,
-          },
-        );
-      }
-    }
-
-    return true;
-  }
-
-  /** Clone COMPLETED steps before current process from parent → child after split. */
-  private async inheritPriorProcessTrackingFromParent(
-    manager: EntityManager,
-    parentLot: ProductionLot,
-    childLotId: number,
-    childQuantity: number,
-    orderedProcesses: ProductionProcess[],
-    currentProcessId: number,
-  ): Promise<void> {
-    const currentIdx = orderedProcesses.findIndex(
-      (p) => p.id === currentProcessId,
-    );
-    if (currentIdx <= 0) return;
-
-    const priorProcessIds = orderedProcesses
-      .slice(0, currentIdx)
-      .map((p) => p.id);
-
-    const parentRows = await manager.find(ProductionLotTracking, {
-      where: {
-        lotId: parentLot.id,
-        processId: In(priorProcessIds),
-        status: 'COMPLETED',
-      },
-      order: { id: 'ASC' },
-    });
-
-    for (const pt of parentRows) {
-      const exists = await manager.findOne(ProductionLotTracking, {
-        where: { lotId: childLotId, processId: pt.processId },
-      });
-      if (exists) continue;
-
-      await manager.save(
-        manager.create(ProductionLotTracking, {
-          lotId: childLotId,
-          processId: pt.processId,
-          startTime: pt.startTime ?? pt.createDate,
-          endTime: pt.endTime ?? pt.startTime ?? new Date(),
-          status: 'COMPLETED',
-          operator: pt.operator,
-          quantityIn: childQuantity,
-          quantityOut: childQuantity,
-          remarks: this.appendSplitLineageRemark(pt.remarks, parentLot.lotNo),
-        }),
-      );
-    }
-  }
-
-  private appendSplitLineageRemark(
-    prior: string | null | undefined,
-    parentLotNo: string,
-  ): string {
-    const tag = `สืบทอดจาก ${parentLotNo} (split)`;
-    const base = prior?.trim();
-    if (!base) return tag;
-    if (base.includes(parentLotNo)) return base;
-    return `${base} · ${tag}`;
-  }
-
-  /** ล็อตย่อยส่วนที่ปล่อย — ปิดขั้นปัจจุบันแล้วส่งไปขั้นถัดไป (ถ้า workflow อนุญาต) */
-  private async applyReleasedLotWorkflowAfterSplit(
-    manager: EntityManager,
-    child: ProductionLot,
-    opts: {
-      releaseQty: number;
-      currentProcessId: number;
-      nextProcessId: number | undefined;
-      moveReleasedToNextStep: boolean;
-      operator: string;
-      reason: string;
-      parentLotNo: string;
-    },
-  ): Promise<void> {
-    const {
-      releaseQty,
-      currentProcessId,
-      nextProcessId,
-      moveReleasedToNextStep,
-      operator,
-      reason,
-      parentLotNo,
-    } = opts;
-    const now = new Date();
-    const splitNote = `แบ่งจาก ${parentLotNo}: ${reason}`;
-
-    if (moveReleasedToNextStep && nextProcessId) {
-      await manager.save(
-        manager.create(ProductionLotTracking, {
-          lotId: child.id,
-          processId: currentProcessId,
-          startTime: now,
-          endTime: now,
-          status: 'COMPLETED',
-          operator,
-          quantityIn: releaseQty,
-          quantityOut: releaseQty,
-          remarks: splitNote,
-        }),
-      );
-      child.currentProcessId = nextProcessId;
-      child.status = 'IN_PROGRESS';
-      await manager.save(child);
-
-      const orderedProcesses =
-        await this.resolveOrderedProcessesForLot(manager, child);
-      const terminalComplete =
-        this.getTerminalCompleteProcess(orderedProcesses);
-      if (terminalComplete && terminalComplete.id === nextProcessId) {
-        await this.autoCloseTerminalCompleteStep(
-          manager,
-          child,
-          orderedProcesses,
-          operator,
-          operator,
-          splitNote,
-        );
-        return;
-      }
-
-      await manager.save(
-        manager.create(ProductionLotTracking, {
-          lotId: child.id,
-          processId: nextProcessId,
-          startTime: now,
-          status: 'IN_PROGRESS',
-          operator,
-          quantityIn: releaseQty,
-          remarks: splitNote,
-        }),
-      );
-      return;
-    }
-
-    child.currentProcessId = currentProcessId;
-    child.status = 'IN_PROGRESS';
-    await manager.save(child);
-    await manager.save(
-      manager.create(ProductionLotTracking, {
-        lotId: child.id,
-        processId: currentProcessId,
-        startTime: now,
-        status: 'IN_PROGRESS',
-        operator,
-        quantityIn: releaseQty,
-        remarks: splitNote,
-      }),
-    );
-  }
-
-  /** ล็อตย่อยส่วนที่เหลือ — คงอยู่ขั้นปัจจุบัน */
-  private async applyRemainingLotWorkflowAfterSplit(
-    manager: EntityManager,
-    child: ProductionLot,
-    opts: {
-      remainingQty: number;
-      currentProcessId: number;
-      parentWasInProgress: boolean;
-      operator: string;
-      reason: string;
-      parentLotNo: string;
-      openTrackingStartTime: Date | null;
-      openTrackingOperator: string | null;
-    },
-  ): Promise<void> {
-    const {
-      remainingQty,
-      currentProcessId,
-      parentWasInProgress,
-      operator,
-      reason,
-      parentLotNo,
-      openTrackingStartTime,
-      openTrackingOperator,
-    } = opts;
-
-    child.currentProcessId = currentProcessId;
-    child.status = parentWasInProgress ? 'IN_PROGRESS' : 'PENDING';
-    await manager.save(child);
-
-    if (parentWasInProgress) {
-      await manager.save(
-        manager.create(ProductionLotTracking, {
-          lotId: child.id,
-          processId: currentProcessId,
-          startTime: openTrackingStartTime ?? new Date(),
-          status: 'IN_PROGRESS',
-          operator: openTrackingOperator ?? operator,
-          quantityIn: remainingQty,
-          remarks: `คงเหลือจาก split ${parentLotNo}: ${reason}`,
-        }),
-      );
-    }
-  }
-
-  private normalizeLotLookupCode(input: string): string {
-    const raw = (input ?? '').trim();
-    if (!raw) return raw;
-    // Some scanners may send full URLs or include query strings.
-    const noQuery = raw.split('?')[0] ?? raw;
-    const parts = noQuery.split('/').filter(Boolean);
-    return (parts[parts.length - 1] ?? noQuery).trim();
   }
 
   async createProcess(dto: CreateProcessDto) {

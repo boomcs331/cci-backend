@@ -4,6 +4,9 @@ import { ProductionOrdersController } from './production-orders.controller';
 import { ProductionProcessesController } from './production-processes.controller';
 import { ProductionOrdersService } from './production-orders.service';
 import { ProductionProcessesService } from './production-processes.service';
+import { ProductionAuthorizationService } from './services/production-authorization.service';
+import { ProductionTrackingService } from './services/production-tracking.service';
+import { ProductionWorkflowService } from './services/production-workflow.service';
 import {
   ProductionOrder,
   ProductionLot,
@@ -37,7 +40,7 @@ import { AuditModule } from '../../core/audit/audit.module';
     ]),
   ],
   controllers: [ProductionOrdersController, ProductionProcessesController],
-  providers: [ProductionOrdersService, ProductionProcessesService],
-  exports: [ProductionOrdersService, ProductionProcessesService],
+  providers: [ProductionOrdersService, ProductionProcessesService, ProductionAuthorizationService, ProductionTrackingService, ProductionWorkflowService],
+  exports: [ProductionOrdersService, ProductionProcessesService, ProductionAuthorizationService, ProductionTrackingService, ProductionWorkflowService],
 })
 export class ProductionOrdersModule {}
