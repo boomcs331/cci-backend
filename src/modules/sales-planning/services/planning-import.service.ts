@@ -11,6 +11,7 @@ import { RowStatus } from '../entities/planning-row.entity';
 import { ErrorCode } from '../constants/error-codes.enum';
 import * as xlsx from 'xlsx';
 import * as crypto from 'crypto';
+import { existsSync } from 'fs';
 
 export interface ImportOptions {
   file: Express.Multer.File;
@@ -278,21 +279,64 @@ export class PlanningImportService {
       batch.status === BatchStatus.COMPLETED ||
       batch.status === BatchStatus.FAILED
     ) {
-      throw new BadRequestException(
-        'Cannot cancel a completed or failed batch',
-      );
+      throw new BadRequestException('Cannot cancel completed or failed batch');
     }
 
     await this.batchRepository.updateStatus(batchId, BatchStatus.CANCELLED);
   }
 
-  async deletePlanningData(batchId: number): Promise<void> {
+  async deleteBatch(batchId: number): Promise<void> {
     const batch = await this.batchRepository.findById(batchId);
     if (!batch) {
       throw new BadRequestException('Batch not found');
     }
 
-    // Delete will cascade to rows, errors, and history
+    // Delete associated rows and errors
+    await this.rowRepository.deleteByBatchId(batchId);
+    await this.errorRepository.deleteByBatchId(batchId);
+    
+    // Delete the batch
     await this.batchRepository.delete(batchId);
+  }
+
+  async reprocessBatch(batchId: number): Promise<void> {
+    const batch = await this.batchRepository.findById(batchId);
+    if (!batch) {
+      throw new BadRequestException('Batch not found');
+    }
+
+    if (batch.status === BatchStatus.PROCESSING) {
+      throw new BadRequestException('Batch is already processing');
+    }
+
+    // Reset batch status to PROCESSING
+    await this.batchRepository.updateStatus(batchId, BatchStatus.PROCESSING);
+
+    // Delete existing rows and errors
+    await this.rowRepository.deleteByBatchId(batchId);
+    await this.errorRepository.deleteByBatchId(batchId);
+
+    // Re-process the file
+    const filePath = batch.filePath;
+    await this.processPlanningBatch({
+      batchId: batchId,
+      filePath: filePath,
+      year: batch.year,
+      month: batch.month,
+    });
+  }
+
+  async getBatchFile(batchId: number): Promise<string | null> {
+    const batch = await this.batchRepository.findById(batchId);
+    if (!batch) {
+      return null;
+    }
+
+    const filePath = `./uploads/planning/${batch.fileName}`;
+    if (existsSync(filePath)) {
+      return filePath;
+    }
+
+    return null;
   }
 }

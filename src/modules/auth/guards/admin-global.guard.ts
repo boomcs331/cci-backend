@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AuthService } from '../auth.service';
+import { AuthService } from '../services/auth.service';
 import { REQUIRE_ADMIN_GLOBAL_KEY } from '../decorators/require-admin-global.decorator';
 
 @Injectable()

@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { RequireAdminGlobal } from '../decorators/require-admin-global.decorator';
 import { AdminGlobalGuard } from '../guards/admin-global.guard';
-import { AuthService } from '../auth.service';
+import { AuthService } from '../services/auth.service';
 import { CreateDepartmentDto } from '../dto/create-department.dto';
 import { UpdateDepartmentDto } from '../dto/update-department.dto';
 import { AuthSanitizeUserInterceptor } from '../interceptors/auth-sanitize-user.interceptor';

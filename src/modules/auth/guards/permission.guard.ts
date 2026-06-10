@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AuthService } from '../auth.service';
+import { AuthService } from '../services/auth.service';
 import {
   DEPARTMENT_SCOPE_KEY,
   DepartmentScopeOptions,

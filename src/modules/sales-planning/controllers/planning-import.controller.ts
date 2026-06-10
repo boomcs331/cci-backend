@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
   Body,
   Query,
@@ -10,7 +11,10 @@ import {
   BadRequestException,
   UseGuards,
   Request,
+  Res,
+  HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -135,7 +139,7 @@ export class PlanningImportController {
   @Get(':batchId/rows')
   async getBatchRows(
     @Param('batchId') batchId: string,
-    @Query() query?: { skip?: number; take?: number; customerCode?: string; productCode?: string; status?: string },
+    @Query() query?: { skip?: number; take?: number; customerCode?: string; productCode?: string; status?: string; saleDate?: string },
   ) {
     const batchIdNum = parseInt(batchId);
     const skip = !isNaN(query?.skip || 0) ? (query?.skip || 0) : 0;
@@ -152,6 +156,15 @@ export class PlanningImportController {
     }
     if (query?.status) {
       rows = rows.filter(r => r.status === query.status);
+    }
+    if (query?.saleDate) {
+      const filterDate = new Date(query.saleDate);
+      rows = rows.filter(r => {
+        const rowDate = new Date(r.saleDate);
+        rowDate.setHours(0, 0, 0, 0);
+        filterDate.setHours(0, 0, 0, 0);
+        return rowDate.getTime() === filterDate.getTime();
+      });
     }
 
     const total = rows.length;
@@ -191,6 +204,27 @@ export class PlanningImportController {
   async cancelImport(@Param('batchId') batchId: string) {
     await this.importService.cancelImport(parseInt(batchId));
     return { message: 'Import cancelled successfully' };
+  }
+
+  @Delete(':batchId')
+  async deleteBatch(@Param('batchId') batchId: string) {
+    await this.importService.deleteBatch(parseInt(batchId));
+    return { message: 'Batch deleted successfully' };
+  }
+
+  @Post(':batchId/reprocess')
+  async reprocessBatch(@Param('batchId') batchId: string) {
+    await this.importService.reprocessBatch(parseInt(batchId));
+    return { message: 'Batch reprocessing started' };
+  }
+
+  @Get(':batchId/download')
+  async downloadBatch(@Param('batchId') batchId: string, @Res() res: Response) {
+    const file = await this.importService.getBatchFile(parseInt(batchId));
+    if (!file) {
+      return res.status(HttpStatus.NOT_FOUND).json({ message: 'File not found' });
+    }
+    res.download(file, `batch-${batchId}.xlsx`);
   }
 
   @Post('history')

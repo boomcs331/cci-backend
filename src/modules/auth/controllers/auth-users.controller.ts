@@ -12,7 +12,7 @@ import {
   Put,
   UseInterceptors,
 } from '@nestjs/common';
-import { AuthService } from '../auth.service';
+import { AuthService } from '../services/auth.service';
 import { AssignRolesDto } from '../dto/assign-roles.dto';
 import { AssignScopedRolesDto } from '../dto/assign-scoped-roles.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';

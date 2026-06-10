@@ -1,28 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import { User } from './entities/user.entity';
-import { Role } from './entities/role.entity';
-import { Permission } from './entities/permission.entity';
-import { Department } from './entities/department.entity';
-import { CreateUserDto } from './dto/create-user.dto';
-import { LoginDto } from './dto/login.dto';
-import { CreateRoleDto } from './dto/create-role.dto';
-import { CreatePermissionDto } from './dto/create-permission.dto';
-import { CreateDepartmentDto } from './dto/create-department.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UpdateRoleDto } from './dto/update-role.dto';
-import { UpdatePermissionDto } from './dto/update-permission.dto';
-import { UpdateDepartmentDto } from './dto/update-department.dto';
-import { AuthRbacService } from './services/auth-rbac.service';
-import { AuthUserService } from './services/auth-user.service';
+import { User } from '../entities/user.entity';
+import { Role } from '../entities/role.entity';
+import { Permission } from '../entities/permission.entity';
+import { Department } from '../entities/department.entity';
+import { CreateUserDto } from '../dto/create-user.dto';
+import { LoginDto } from '../dto/login.dto';
+import { CreateRoleDto } from '../dto/create-role.dto';
+import { CreatePermissionDto } from '../dto/create-permission.dto';
+import { CreateDepartmentDto } from '../dto/create-department.dto';
+import { UpdateUserDto } from '../dto/update-user.dto';
+import { UpdateRoleDto } from '../dto/update-role.dto';
+import { UpdatePermissionDto } from '../dto/update-permission.dto';
+import { UpdateDepartmentDto } from '../dto/update-department.dto';
+import { AuthRbacService } from './auth-rbac.service';
+import { AuthUserService } from './auth-user.service';
 import {
   AuthMenuService,
   MenuNode,
   MenuRecord,
-} from './services/auth-menu.service';
-import { RoleAssignmentItemDto } from './dto/assign-roles.dto';
-import { ScopedRoleAssignmentDto } from './dto/assign-scoped-roles.dto';
-import { CreateMenuDto } from './dto/create-menu.dto';
-import { UpdateMenuDto } from './dto/update-menu.dto';
+} from './auth-menu.service';
+import { RoleAssignmentItemDto } from '../dto/assign-roles.dto';
+import { ScopedRoleAssignmentDto } from '../dto/assign-scoped-roles.dto';
+import { CreateMenuDto } from '../dto/create-menu.dto';
+import { UpdateMenuDto } from '../dto/update-menu.dto';
 
 @Injectable()
 export class AuthService {

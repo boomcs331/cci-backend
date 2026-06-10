@@ -10,7 +10,7 @@ import {
   Put,
   UseInterceptors,
 } from '@nestjs/common';
-import { AuthService } from '../auth.service';
+import { AuthService } from '../services/auth.service';
 import { CreateMenuDto } from '../dto/create-menu.dto';
 import { UpdateMenuDto } from '../dto/update-menu.dto';
 import { AuthSanitizeUserInterceptor } from '../interceptors/auth-sanitize-user.interceptor';

@@ -1,14 +1,14 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthController } from './auth.controller';
+import { AuthController } from './controllers/auth.controller';
 import { AuthAuditController } from './controllers/auth-audit.controller';
 import { AuthPermissionsController } from './controllers/auth-permissions.controller';
 import { AuthRolesController } from './controllers/auth-roles.controller';
 import { AuthUsersController } from './controllers/auth-users.controller';
 import { AuthDepartmentsController } from './controllers/auth-departments.controller';
 import { AuthMenusController } from './controllers/auth-menus.controller';
-import { AuthService } from './auth.service';
+import { AuthService } from './services/auth.service';
 import { User } from './entities/user.entity';
 import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';

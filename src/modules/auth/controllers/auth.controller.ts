@@ -10,12 +10,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { AuthService } from './auth.service';
-import { AuthAuditService } from './services/auth-audit.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { LoginDto } from './dto/login.dto';
-import { withMessage } from './utils/auth-response.util';
-import { AuthSanitizeUserInterceptor } from './interceptors/auth-sanitize-user.interceptor';
+import { AuthService } from '../services/auth.service';
+import { AuthAuditService } from '../services/auth-audit.service';
+import { CreateUserDto } from '../dto/create-user.dto';
+import { LoginDto } from '../dto/login.dto';
+import { withMessage } from '../utils/auth-response.util';
+import { AuthSanitizeUserInterceptor } from '../interceptors/auth-sanitize-user.interceptor';
 
 @Controller('auth')
 @UseInterceptors(AuthSanitizeUserInterceptor)

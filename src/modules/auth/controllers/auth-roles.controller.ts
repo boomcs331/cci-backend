@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { RequireAdminGlobal } from '../decorators/require-admin-global.decorator';
 import { AdminGlobalGuard } from '../guards/admin-global.guard';
-import { AuthService } from '../auth.service';
+import { AuthService } from '../services/auth.service';
 import { AssignPermissionsDto } from '../dto/assign-permissions.dto';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
