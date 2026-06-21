@@ -76,9 +76,7 @@ VALUES
   ('pc_home', 'ข้อมูลวัตถุดิบ', '/pc', NULL, 10, FALSE, ARRAY['production_plans.read'], 'all', NULL, (SELECT id FROM auth.menus WHERE code = 'pc_root')),
   ('pc_income', 'รายการรับเข้า', '/pc/income', NULL, 20, FALSE, ARRAY['production_plans.create'], 'all', NULL, (SELECT id FROM auth.menus WHERE code = 'pc_root')),
   ('pc_outcome', 'รายการจ่ายออก', '/pc/outcome', NULL, 30, FALSE, ARRAY['production_plans.issue'], 'all', NULL, (SELECT id FROM auth.menus WHERE code = 'pc_root')),
-  ('pc_reservations', 'รายการจอง', '/pc/reservations', NULL, 40, FALSE, ARRAY['production_plans.reserve'], 'all', NULL, (SELECT id FROM auth.menus WHERE code = 'pc_root')),
   ('pc_schedule_res', 'แผนผลิตที่จองสำเร็จแล้ว', '/pc/schedule/reservations', NULL, 50, FALSE, ARRAY['production_plans.read'], 'all', ARRAY['WE'], (SELECT id FROM auth.menus WHERE code = 'pc_root')),
-  ('pc_tracking_scan', 'ติดตามสถานะการผลิตสินค้า', '/pc/production-step-scan', NULL, 60, FALSE, ARRAY['production_orders.read'], 'all', NULL, (SELECT id FROM auth.menus WHERE code = 'pc_root')),
   ('pc_stock', 'Stock คงเหลือ', '/pc/stock', NULL, 70, FALSE, ARRAY['production_plans.read'], 'all', NULL, (SELECT id FROM auth.menus WHERE code = 'pc_root')),
   ('pc_report', 'รายงาน', '/pc/report', NULL, 80, FALSE, ARRAY['production_plans.read'], 'all', NULL, (SELECT id FROM auth.menus WHERE code = 'pc_root')),
 
