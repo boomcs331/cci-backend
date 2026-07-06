@@ -1,16 +1,19 @@
 # Frontend Guide
 
-## Note
-This repository contains **backend code only**. There is no frontend code in this repository. This guide provides information for frontend developers on how to interact with this backend API.
+> เอกสารนี้สรุปสิ่งที่ frontend developer ต้องรู้เมื่อเชื่อมต่อกับ CCI Backend สำหรับรายละเอียด endpoint ทั้งหมด ดู `docs/frontend-api-wiki.md` และ `api-map.md`
 
 ## API Base URL
 - **Development**: `http://localhost:3006`
-- **Production**: Configured via environment variable
+- **Production**: กำหนดผ่าน environment variable / proxy
+- **Global prefix**: ไม่มี (root `/`)
+- **Static files**: `/uploads/<path>`
 
 ## Authentication
 
+ปัจจุบัน backend ใช้ **header-based identity** ไม่ใช่ JWT Bearer token
+
 ### Login Flow
-1. Send POST request to `/auth/login` with credentials:
+1. เรียก `POST /auth/login` พร้อม credentials:
 ```json
 {
   "username": "string",
@@ -18,345 +21,148 @@ This repository contains **backend code only**. There is no frontend code in thi
 }
 ```
 
-2. Receive JWT token in response:
+2. ได้ response:
 ```json
 {
-  "success": true,
-  "data": {
-    "token": "jwt_token_here",
-    "user": {...}
-  }
+  "message": "Login successful",
+  "user": { "id", "username", "email", "roles", "departments" },
+  "permissions": ["sales_order.read", "production_orders.update", ...],
+  "menus": [...]
 }
 ```
 
-3. Store token in localStorage or secure cookie
-4. Include token in subsequent requests via `Authorization: Bearer <token>` header
-
-### Token Refresh
-- Endpoint: `POST /auth/refresh`
-- Send current token to receive new token
-- Update stored token on success
-
-### Logout
-- Endpoint: `POST /auth/logout`
-- Clear stored token
-- Token will be invalidated on server
-
-## Request Headers
-
-### Standard Headers
+3. เก็บ `userId`, `permissions`, `menus` ไว้ใน state
+4. ส่ง headers ในทุก request ที่ต้องการ auth:
 ```typescript
 {
   'Content-Type': 'application/json',
-  'Authorization': `Bearer ${token}`
-}
-```
-
-### Additional Headers (for audit logging)
-```typescript
-{
   'x-user-id': userId,
-  'x-username': username,
-  'x-department-id': departmentId
+  'x-department-id': departmentId, // สำหรับ production module
+  'x-username': username
 }
 ```
 
-## Response Format
+### หมายเหตุ
+- ไม่มี endpoint `/auth/refresh` หรือ `/auth/logout` ในโค้ดปัจจุบัน
+- การ "logout" ทำที่ฝั่ง client โดยล้าง auth state
+- `GET /auth/menu` ใช้ดึงเมนูนำทางตาม user/department
 
-### Success Response
+## Response Formats
+
+### มาตรฐาน (ResponseHelper)
 ```json
 {
   "success": true,
-  "data": {...},
-  "message": "Success message",
+  "message": "Products retrieved successfully",
+  "data": {},
   "timestamp": "2024-01-01T00:00:00.000Z"
 }
+```
+
+### Paginated
+```json
+{
+  "success": true,
+  "message": "Products retrieved successfully",
+  "data": [],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 100,
+    "totalPages": 10
+  },
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+### Auth Response (withMessage/withCollection)
+```json
+{ "message": "User created successfully", "user": {} }
+{ "users": [] }
+{ "message": "Login successful", "user": {}, "permissions": [], "menus": [] }
 ```
 
 ### Error Response
 ```json
 {
   "success": false,
-  "code": "ERROR_CODE",
-  "message": "Error message",
-  "errors": [
-    {
-      "field": "fieldName",
-      "message": "Validation error message"
-    }
-  ],
+  "code": "VALIDATION_FAILED",
+  "message": "ข้อมูลไม่ถูกต้อง",
+  "errors": [{ "field": "email", "message": "Invalid email format" }],
   "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-## Common Error Codes
-- `VALIDATION_FAILED`: Request validation failed
-- `UNAUTHORIZED`: Authentication required or failed
-- `FORBIDDEN`: Insufficient permissions
-- `NOT_FOUND`: Resource not found
-- `CONFLICT`: Resource conflict (duplicate, etc.)
-- `INTERNAL_ERROR`: Server error
+## CORS
 
-## CORS Configuration
-
-### Development Origins
-- `http://localhost:3000`
-- `http://localhost:3001`
-- `http://localhost:3002`
+Dev origins ที่อนุญาต:
+- `http://localhost:3000-3002`
 - `http://127.0.0.1:3000-3002`
-- Private LAN (if `CORS_DEV_ALLOW_LAN=1`)
-- Cloudflare tunnels (trycloudflare.com)
+- Private LAN (ถ้าเปิด `CORS_DEV_ALLOW_LAN=1`)
+- `*.trycloudflare.com`
 
-### Production Origins
-- Configured via `CORS_ORIGINS` environment variable
+Production: กำหนดผ่าน `CORS_ORIGINS`
 
 ## API Endpoints Overview
 
-### Authentication
-- `POST /auth/login` - Login
-- `POST /auth/register` - Register
-- `POST /auth/logout` - Logout
-- `POST /auth/refresh` - Refresh token
+| Module | Base Path | หน้าที่ |
+|--------|-----------|---------|
+| Auth | `/auth` | ผู้ใช้ บทบาท สิทธิ์ แผนก เมนู |
+| Sales Planning | `/sales-planning` | แผนขาย นำเข้า Excel |
+| Sales Orders | `/sales/orders` | ใบสั่งขาย อนุมัติ ยกเลิก |
+| Sales Dashboard | `/sales/dashboard` | Dashboard KPI |
+| Sales Reports | `/sales/reports` | รายงานยอดขาย |
+| Sales Import | `/sales/import` | นำเข้าใบสั่งขาย |
+| Production Plans | `/production-plans` | แผนการผลิต จอง/จ่าย วัตถุดิบ |
+| Production Orders | `/production-orders` | คำสั่งผลิต QR lot tracking |
+| Materials | `/materials`, `/material-issues`, `/materials/transactions` | วัตถุดิบ รับ/จ่าย สต็อก |
+| Products | `/products` | สินค้า BOM สต็อก การจองขาย |
+| Masters | `/masters`, `/masters/products`, `/masters/production-processes`, `/masters/product-production-steps` | ข้อมูลมาตรฐาน |
+| Logs | `/logs` | API logs สถิติ |
+| AI Chat | `/ai/chat` | แชท AI |
 
-### Materials
-- `GET /materials` - List materials
-- `POST /materials/transactions/receive` - Receive materials
-- `POST /materials/transactions/issue` - Issue materials
-
-### Products
-- `GET /products` - List products
-- `GET /products/inventory` - Get inventory
-- `GET /masters/products` - Master products
-
-### Production
-- `GET /production-plans` - List production plans
-- `GET /production-orders` - List production orders
-- `POST /production-orders` - Create production order
-
-### Sales
-- `GET /sales/orders` - List sales orders
-- `POST /sales/orders` - Create sales order
-- `POST /sales/orders/:id/approve` - Approve order
-- `GET /sales/dashboard` - Dashboard data
-
-### Sales Planning
-- `GET /sales-planning` - List planning data
-- `POST /sales-planning/import` - Import from Excel
-- `GET /sales-planning/export` - Export to Excel
-
-See `api-map.md` for complete endpoint documentation.
+ดูรายละเอียดทั้งหมดใน `docs/frontend-api-wiki.md` หรือ `api-map.md`
 
 ## Pagination
 
-### Query Parameters
-- `page`: Page number (default: 1)
-- `limit`: Items per page (default: 10)
-- `sort`: Sort field
-- `order`: Sort direction (asc/desc)
-
-### Example
-```
-GET /materials?page=1&limit=20&sort=name&order=asc
-```
-
-### Response Format
-```json
-{
-  "success": true,
-  "data": {
-    "items": [...],
-    "total": 100,
-    "page": 1,
-    "limit": 20,
-    "totalPages": 5
-  }
-}
-```
+ส่วนใหญ่ใช้ `page` / `limit` (default 1/10) บาง endpoint ใช้ `skip` / `take` เช่น sales-planning import history
 
 ## File Upload
 
-### Upload Endpoints
-- `POST /materials/upload` - Upload material files
-- `POST /products/upload` - Upload product files
+Endpoints ที่ใช้ `multipart/form-data`:
+- `POST /sales/import/upload`
+- `POST /sales-planning/import`
+- `POST /materials/upload/document` (field: `files`, สูงสุด 10 ไฟล์)
+- `POST /materials/upload/workpiece-image` (field: `file`)
+- `POST /products/upload/product-image` (field: `file`)
 
-### Request Format
-- Use `multipart/form-data`
-- Field name: `file`
-- Include JWT token in Authorization header
-
-### Example (JavaScript)
-```javascript
-const formData = new FormData();
-formData.append('file', file);
-
-fetch('http://localhost:3006/materials/upload', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`
-  },
-  body: formData
-});
-```
-
-### File Access
-- Uploaded files accessible via `/uploads/` path
-- Example: `http://localhost:3006/uploads/filename.ext`
+ไฟล์ที่อัปโหลดเข้าถึงได้ที่ `/uploads/<path>` เช่น `http://localhost:3006/uploads/product-images/xxx.jpg`
 
 ## Department Scoping
 
-### Multi-Department Users
-- Users can belong to multiple departments
-- API responses may include data from all user's departments
-- Some endpoints allow filtering by department
+Module `production-plans` และ `production-orders` ต้องส่ง `x-department-id` header บาง endpoint กรองข้อมูลตามแผนที่ผู้ใช้มีสิทธิ์
 
-### Department Header
-Include `x-department-id` header to scope requests to specific department
-- If omitted, may return data from all user's departments
-- Backend validates user has access to specified department
+## Permission Handling
 
-## Data Validation
+หลัง login ได้ `permissions` array มา ใช้ตรวจสอบสิทธิ์ก่อนแสดง/ซ่อนปุ่ม หรือ redirect
 
-### Client-Side Validation
-- Validate forms before sending to API
-- Use same validation rules as backend (see DTOs)
-- Display validation errors from API response
-
-### Validation Error Response
-```json
-{
-  "success": false,
-  "code": "VALIDATION_FAILED",
-  "message": "ข้อมูลไม่ถูกต้อง",
-  "errors": [
-    {
-      "field": "email",
-      "message": "Invalid email format"
-    }
-  ]
-}
-```
-
-## State Management
-
-### Authentication State
-- Store user info and token
-- Check token expiration
-- Refresh token before expiration
-- Clear auth state on logout
-
-### Data Caching
-- Consider caching frequently accessed data
-- Invalidate cache on mutations
-- Use appropriate cache duration
-
-### Loading States
-- Show loading indicators during API calls
-- Handle optimistic updates where appropriate
-- Revert on error
-
-## Error Handling
-
-### Network Errors
-- Handle connection failures gracefully
-- Show user-friendly error messages
-- Implement retry logic for transient failures
-
-### API Errors
-- Display error messages from API
-- Handle specific error codes appropriately
-- Redirect to login on 401 errors
-- Show permission denied on 403 errors
-
-## Internationalization
-
-### Language Support
-- Backend supports Thai language
-- Error messages may be in Thai
-- Dates/times in ISO 8601 format
-- Consider timezone handling
+ตัวอย่าง permission หลัก:
+- `sales_order.read`, `sales_order.create`, `sales_order.update`, `sales_order.delete`, `sales_order.approve`, `sales_order.export`
+- `production_plans.read`, `production_plans.create`, `production_plans.update`, `production_plans.delete`, `production_plans.approve`, `production_plans.issue`, `production_plans.reserve`, `production_plans.generate_orders`, `production_plans.cancel`, `production_plans.manage`
+- `production_orders.read`, `production_orders.create`, `production_orders.update`, `production_orders.manage`
+- `products.stock.read`, `products.sales.reserve`
 
 ## Best Practices
 
-### Security
-- Never store passwords in frontend
-- Use HTTPS in production
-- Implement CSRF protection if using cookies
-- Validate all user input
-- Sanitize displayed data
-
-### Performance
-- Implement pagination for large datasets
-- Use debouncing for search inputs
-- Lazy load images and data
-- Implement request cancellation
-
-### User Experience
-- Provide feedback for all actions
-- Handle loading states gracefully
-- Show meaningful error messages
-- Implement undo for destructive actions
-
-## Development Tools
-
-### API Testing
-- Use Postman, Insomnia, or similar tools
-- Import OpenAPI spec if available (previously in openapi/ folder)
-- Test authentication flow first
-- Test error scenarios
-
-### Debugging
-- Check browser console for errors
-- Inspect network requests in DevTools
-- Log API responses during development
-- Use backend logs for server-side issues
-
-## Common Patterns
-
-### CRUD Operations
-```javascript
-// Create
-POST /resource
-Body: { data }
-
-// Read
-GET /resource
-GET /resource/:id
-
-// Update
-PUT /resource/:id
-Body: { data }
-
-// Delete
-DELETE /resource/:id
-```
-
-### Search/Filter
-```javascript
-GET /resource?search=query&filter=value
-```
-
-### Bulk Operations
-```javascript
-POST /resource/bulk
-Body: { items: [...] }
-```
-
-## WebSocket/Real-time
-- **Status**: No WebSocket endpoints currently implemented
-- **Future**: May be added for real-time updates
-- **Alternative**: Poll for updates if needed
-
-## Rate Limiting
-- **Status**: Not currently implemented
-- **Future**: May be added for API protection
-- **Best Practice**: Implement client-side rate limiting
-
-## API Versioning
-- **Current**: No versioning in URLs
-- **Future**: May add `/v1/` prefix if needed
-- **Backward Compatibility**: Breaking changes should be communicated
+- ตรวจสอบ `success` ใน response ก่อนใช้ data
+- แสดง `message` จาก backend ให้ user เห็น
+- ใช้ `pagination` สำหรับ list ทุกหน้า
+- ใส่ loading state ในขณะเรียก API
+- handle 401/403 โดย redirect ไปหน้า login หรือแสดง "ไม่มีสิทธิ์"
+- สำหรับ production QR workflow ดู `docs/frontend-api-wiki.md` section 8
 
 ## Support
-- Refer to `api-map.md` for complete endpoint documentation
-- Check `domain-rules.md` for business logic
-- Review `backend-guide.md` for backend-specific guidance
+- `docs/frontend-api-wiki.md` — wiki สำหรับ frontend
+- `api-map.md` — รายการ endpoint ทั้งหมด
+- `domain-rules.md` — business rules
+- `backend-guide.md` — backend development guide
