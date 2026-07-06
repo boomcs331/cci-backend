@@ -1,0 +1,39 @@
+# รันแอปใน Docker แต่ใช้ PostgreSQL ที่ติดตั้งบนเครื่อง (ไม่ขึ้น container postgres)
+#
+# จากใน container คำว่า localhost ไม่ใช่เครื่อง host — ใช้ host.docker.internal แทน
+# Docker Desktop (Windows/Mac): มี host.docker.internal อยู่แล้ว
+# Linux: ใช้ extra_hosts ด้านล่าง (ต้อง Docker 20.10+)
+#
+# รัน:
+#   docker compose -f docker-compose.host-db.yml up --build
+#
+# ตั้งค่า DB_USER / DB_PASS / DB_NAME ให้ตรงกับ Postgres บนเครื่อง (หรือใส่ใน .env)
+# ถ้าเชื่อมไม่ได้ ให้ตรวจว่า postgresql.conf listen_addresses = '*'
+# และ pg_hba.conf อนุญาตจาก subnet ของ Docker (เช่น 172.16.0.0/12)
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: cci-backend-hostdb
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3006}:3006"
+    # ค่าใน environment ชนค่าจาก .env ที่ mount ใน container (Nest โหลด .env แต่ process.env จาก Docker มาก่อน)
+    environment:
+      DOCKER_CONTAINER: '1'
+      NODE_ENV: development
+      DB_HOST: host.docker.internal
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
+      DB_NAME: ${DB_NAME:-cps_cci}
+      PORT: ${PORT:-3006}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-here}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+    volumes:
+      - .:/app
+      - /app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

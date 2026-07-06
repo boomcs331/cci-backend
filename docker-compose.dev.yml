@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cci-postgres-dev
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: boom9203106
+      POSTGRES_DB: cps_cci
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - cci-network-dev
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: cci-backend-dev
+    restart: always
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: boom9203106
+      DB_NAME: cps_cci
+      PORT: 3006
+      JWT_SECRET: your-secret-key-here
+      JWT_EXPIRES_IN: 1d
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+    networks:
+      - cci-network-dev
+
+volumes:
+  postgres_dev_data:
+
+networks:
+  cci-network-dev:
+    driver: bridge

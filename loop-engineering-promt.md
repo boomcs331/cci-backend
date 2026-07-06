@@ -1,0 +1,1 @@
+Use Loop Engineering. Read .project-ai first. Use the relevant skill in .agents/skills. Work in small verified loops.
